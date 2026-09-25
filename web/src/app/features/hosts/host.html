@@ -1,0 +1,70 @@
+<div class="page host">
+  <a class="back" routerLink="/"><app-icon name="arrow_back" [size]="18" /> Fleet</a>
+  @if (error()) {
+    <div class="card">
+      <p class="error" role="alert">{{ error() }}</p>
+    </div>
+  } @else if (summary(); as s) {
+    <header class="head">
+      <div class="title">
+        <span class="status" [class.on]="online()"></span>
+        <div>
+          <h1>{{ s.name }}</h1>
+          <p class="muted">
+            <span class="mono">{{ s.primaryIp }}</span>
+            @if (s.hostname !== s.name) {
+              · {{ s.hostname }}
+            }
+            · {{ osLine(ctx.agent()) }} · {{ uptime() }}
+          </p>
+        </div>
+      </div>
+      <div class="meta">
+        @for (t of s.tags; track t) {
+          <span class="chip">{{ t }}</span>
+        }
+        <span
+          class="chip"
+          [class.primary]="s.policyProfile === 4"
+          [class.warn]="s.policyPaused"
+          matTooltip="Owner policy on the host (set by the machine owner)"
+        >
+          <app-icon name="policy" [size]="14" />
+          {{ s.policyPaused ? 'Paused by owner' : (profiles[s.policyProfile] ?? 'Unknown policy') }}
+        </span>
+        @if (s.rebootRequired) {
+          <span class="chip warn"><app-icon name="restart_alt" [size]="14" /> Reboot required</span>
+        }
+      </div>
+      <div class="actions">
+        @if (session.can('terminal.open')) {
+          <a mat-stroked-button routerLink="terminal" [disabled]="!online()"
+            ><app-icon name="terminal" /> Terminal</a
+          >
+        }
+        @if (session.can('packages.manage') && s.updatesAvailable) {
+          <a mat-flat-button routerLink="updates"
+            ><app-icon name="update" /> {{ s.updatesAvailable }} updates</a
+          >
+        }
+      </div>
+    </header>
+    <nav mat-tab-nav-bar [tabPanel]="panel" class="tabs">
+      @for (t of tabs; track t.path) {
+        <a
+          mat-tab-link
+          [routerLink]="t.path"
+          routerLinkActive
+          #rla="routerLinkActive"
+          [active]="rla.isActive"
+          >{{ t.label }}</a
+        >
+      }
+    </nav>
+    <mat-tab-nav-panel #panel>
+      <router-outlet />
+    </mat-tab-nav-panel>
+  } @else {
+    <div class="card muted">Loading…</div>
+  }
+</div>

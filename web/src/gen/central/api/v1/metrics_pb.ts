@@ -196,7 +196,8 @@ export const WatchAgentMetricsResponseSchema: GenMessage<WatchAgentMetricsRespon
  */
 export enum MetricsResolution {
   /**
-   * Chosen automatically from the time range (<= ~500 points).
+   * Chosen automatically from the time range. Rollups over long ranges are averaged into
+   * wider buckets, so a series has at most 720 points.
    *
    * @generated from enum value: METRICS_RESOLUTION_UNSPECIFIED = 0;
    */

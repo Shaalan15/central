@@ -41,7 +41,7 @@ import (
 type options struct {
 	agentURL, serverName, keyFile, prefix, stateDir, profile string
 	agents, enrollConcurrency                                int
-	statsEvery, rampUp                                       time.Duration
+	statsEvery, rampUp, backfill                             time.Duration
 }
 
 type stats struct {
@@ -82,6 +82,7 @@ func main() {
 	flag.IntVar(&o.enrollConcurrency, "enroll-concurrency", 8, "parallel enrollments")
 	flag.DurationVar(&o.statsEvery, "stats", 15*time.Second, "how often to log statistics")
 	flag.DurationVar(&o.rampUp, "ramp-up", 5*time.Second, "spread initial connections over this duration")
+	flag.DurationVar(&o.backfill, "backfill", 0, "on first connect, send this much metrics history (up to 1h50m) like an agent flushing its offline buffer")
 	flag.Parse()
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -144,6 +145,9 @@ func seed(name string) uint64 {
 func run(ctx context.Context, o options, log *slog.Logger) error {
 	if o.agents < 1 || o.agents > 10_000 {
 		return errors.New("--agents must be between 1 and 10000")
+	}
+	if o.backfill < 0 || o.backfill > maxBackfill {
+		return fmt.Errorf("--backfill must be between 0 and %s (Central drops older samples)", maxBackfill)
 	}
 	if o.serverName == "" {
 		u, err := url.Parse(o.agentURL)
@@ -214,7 +218,7 @@ func run(ctx context.Context, o options, log *slog.Logger) error {
 					return
 				}
 			}
-			runAgent(ctx, agents[i], hosts[i], st, log)
+			runAgent(ctx, agents[i], hosts[i], o.backfill, st, log)
 		})
 	}
 	tick := time.NewTicker(o.statsEvery)
@@ -258,7 +262,7 @@ func enroll(ctx context.Context, o options, key string, h *agentsim.Host, log *s
 	return a, nil
 }
 
-func runAgent(ctx context.Context, a *agentsim.Agent, h *agentsim.Host, st *stats, log *slog.Logger) {
+func runAgent(ctx context.Context, a *agentsim.Agent, h *agentsim.Host, backfill time.Duration, st *stats, log *slog.Logger) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		runCtx, cancel := context.WithCancel(ctx)
@@ -285,7 +289,8 @@ func runAgent(ctx context.Context, a *agentsim.Agent, h *agentsim.Host, st *stat
 		err := a.Run(runCtx, handler, func(c *agentsim.Conn) {
 			wasConnected = true
 			st.connected.Add(1)
-			go telemetry(c, h)
+			go telemetry(c, h, backfill)
+			backfill = 0
 		})
 		if wasConnected {
 			st.connected.Add(-1)
@@ -317,12 +322,27 @@ func runAgent(ctx context.Context, a *agentsim.Agent, h *agentsim.Host, st *stat
 	}
 }
 
-// telemetry sends inventory once and then metrics and heartbeats until the stream ends.
-func telemetry(c *agentsim.Conn, h *agentsim.Host) {
+const (
+	maxBackfill      = 110 * time.Minute // Central accepts samples up to two hours old
+	maxReportSamples = 1000              // and at most this many per report
+)
+
+// telemetry sends inventory once, then any backfilled history, then metrics and heartbeats
+// until the stream ends.
+func telemetry(c *agentsim.Conn, h *agentsim.Host, backfill time.Duration) {
 	h.SendInventory(c)
 	interval := c.Ack.GetConfig().GetMetricsInterval().AsDuration()
 	if interval < 5*time.Second {
 		interval = 15 * time.Second
+	}
+	if backfill > 0 {
+		now := time.Now()
+		step := max(interval, backfill/maxReportSamples+time.Millisecond)
+		var history []*agentv1.MetricsSample
+		for t := now.Add(-backfill); t.Before(now.Add(-step / 2)); t = t.Add(step) {
+			history = append(history, h.Sample(t))
+		}
+		_ = c.Send(&agentv1.AgentMessage{Message: &agentv1.AgentMessage_Metrics{Metrics: &agentv1.MetricsReport{Samples: history}}})
 	}
 	metrics := time.NewTicker(interval)
 	defer metrics.Stop()

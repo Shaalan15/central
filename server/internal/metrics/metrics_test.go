@@ -148,6 +148,38 @@ func TestIngestRollupAndPersistence(t *testing.T) {
 	}
 }
 
+func TestAutoResolutionBoundsPoints(t *testing.T) {
+	ctx := context.Background()
+	t0 := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	c := &clock{t: t0}
+	s := newStore(t, holder(t), c)
+	// 30 hours of samples every 30s.
+	for i := range 30 * 120 {
+		c.t = t0.Add(time.Duration(i) * 30 * time.Second)
+		s.Ingest("org", "a1", []*agentv1.MetricsSample{sample(c.t, float32(i%2)*10)})
+	}
+	for _, span := range []time.Duration{6 * time.Hour, 24 * time.Hour, 30 * time.Hour} {
+		res, pts, err := s.Series(ctx, "org", "a1", c.t.Add(-span), c.t, Auto)
+		if err != nil || res != Minute || len(pts) == 0 || len(pts) > maxAutoPoints {
+			t.Fatalf("%s: res=%v points=%d err=%v", span, res, len(pts), err)
+		}
+		var n uint32
+		for i, p := range pts {
+			n += p.N
+			if p.CPU != 5 || p.CPUMax != 10 || (i > 0 && p.T <= pts[i-1].T) {
+				t.Fatalf("%s: bucket %d: %+v", span, i, p)
+			}
+		}
+		if want := uint32(span / (30 * time.Second)); n < want-4 || n > want+4 {
+			t.Fatalf("%s: buckets cover %d samples, want about %d", span, n, want)
+		}
+	}
+	// An explicit resolution is never downsampled.
+	if _, pts, _ := s.Series(ctx, "org", "a1", c.t.Add(-24*time.Hour), c.t, Minute); len(pts) < 1400 {
+		t.Fatalf("explicit minute series has %d points", len(pts))
+	}
+}
+
 func TestEncodeDecode(t *testing.T) {
 	in := []Point{{T: 1, CPU: 1.5, CPUMax: 2, Mem: 3, Swap: 4, Load1: 5, DiskMax: 6, DiskRead: 7, DiskWrite: 8, NetRx: 9, NetTx: 10, N: 11}}
 	data, err := Encode(in)

@@ -19,7 +19,8 @@ service MetricsService {
 
 // MetricsResolution selects the granularity of a series.
 enum MetricsResolution {
-  // Chosen automatically from the time range (<= ~500 points).
+  // Chosen automatically from the time range. Rollups over long ranges are averaged into
+  // wider buckets, so a series has at most 720 points.
   METRICS_RESOLUTION_UNSPECIFIED = 0;
   // Native sample interval (only available for the last hour).
   METRICS_RESOLUTION_RAW = 1;

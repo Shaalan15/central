@@ -4,3 +4,4 @@ node_modules
 src/gen
 package-lock.json
 .angular
+src/app/shared/icons.generated.ts

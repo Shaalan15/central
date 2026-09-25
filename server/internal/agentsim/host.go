@@ -205,7 +205,7 @@ func (h *Host) Sample(now time.Time) *agentv1.MetricsSample {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.cpu = walk(h.rnd, h.cpuBase, 0.5, 100, 8)
-	if h.rnd.Float64() < 0.02 { // occasional spike
+	if h.rnd.Float64() < 0.003 { // occasional spike
 		h.cpu = 85 + h.rnd.Float64()*15
 	}
 	h.mem = walk(h.rnd, h.mem, 10, 97, 1.5)

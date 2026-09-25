@@ -47,6 +47,9 @@ const (
 	// organization's metrics retention).
 	MinuteRetention = 7 * 24 * time.Hour
 	maxQuerySpan    = 400 * 24 * time.Hour
+	// maxAutoPoints bounds series chosen with Auto (see MetricsResolution in metrics.proto):
+	// longer rollup series are averaged into wider buckets.
+	maxAutoPoints = 720
 )
 
 // Point is one measurement or rollup bucket. For rollups T is the bucket start, values are
@@ -421,8 +424,9 @@ func mergePoints(a, b []Point) []Point {
 	return out
 }
 
-// Series returns points for [start, end] at the requested resolution (Auto picks one from the
-// span) and the resolution used.
+// Series returns points for [start, end] at the requested resolution and the resolution used.
+// Auto picks one from the span and averages rollups into wider buckets so that at most
+// maxAutoPoints are returned.
 func (s *Store) Series(ctx context.Context, orgID, agentID string, start, end time.Time, res Resolution) (Resolution, []Point, error) {
 	now := s.now()
 	if end.IsZero() || end.After(now) {
@@ -437,11 +441,12 @@ func (s *Store) Series(ctx context.Context, orgID, agentID string, start, end ti
 	if end.Sub(start) > maxQuerySpan {
 		return res, nil, errors.New("metrics: range too large")
 	}
-	if res == Auto {
+	auto := res == Auto
+	if auto {
 		switch span := end.Sub(start); {
 		case span <= RawWindow && now.Sub(start) <= RawWindow+time.Minute:
 			res = Raw
-		case span <= 12*time.Hour && now.Sub(start) <= MinuteRetention:
+		case span <= 48*time.Hour && now.Sub(start) <= MinuteRetention:
 			res = Minute
 		default:
 			res = Hour
@@ -499,7 +504,35 @@ func (s *Store) Series(ctx context.Context, orgID, agentID string, start, end ti
 			out = append(out, p)
 		}
 	}
+	if bm := bucketMillis(res); auto && res != Raw && len(out) > maxAutoPoints {
+		// Partial buckets at both edges can add one point, so widen until it fits.
+		all := out
+		for per := max(((hi-lo)/bm+maxAutoPoints-1)/maxAutoPoints, 2); len(out) > maxAutoPoints; per++ {
+			out = downsample(all, per*bm)
+		}
+	}
 	return res, out, nil
+}
+
+// downsample averages sorted points into buckets of the given width (aligned to the epoch).
+func downsample(points []Point, width int64) []Point {
+	var out []Point
+	var a acc
+	for _, p := range points {
+		b := p.T - p.T%width
+		if a.n > 0 && a.start != b {
+			out = append(out, a.point())
+			a = acc{}
+		}
+		if a.n == 0 {
+			a.start = b
+		}
+		a.add(p)
+	}
+	if a.n > 0 {
+		out = append(out, a.point())
+	}
+	return out
 }
 
 func bucketMillis(res Resolution) int64 {

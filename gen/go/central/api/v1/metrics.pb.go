@@ -30,7 +30,8 @@ const (
 type MetricsResolution int32
 
 const (
-	// Chosen automatically from the time range (<= ~500 points).
+	// Chosen automatically from the time range. Rollups over long ranges are averaged into
+	// wider buckets, so a series has at most 720 points.
 	MetricsResolution_METRICS_RESOLUTION_UNSPECIFIED MetricsResolution = 0
 	// Native sample interval (only available for the last hour).
 	MetricsResolution_METRICS_RESOLUTION_RAW    MetricsResolution = 1

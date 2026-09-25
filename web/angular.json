@@ -32,7 +32,11 @@
                 "input": "public"
               }
             ],
-            "styles": ["@fontsource-variable/inter/index.css", "src/styles.scss"]
+            "styles": [
+              "@fontsource-variable/inter/index.css",
+              "src/styles.scss",
+              "node_modules/uplot/dist/uPlot.min.css"
+            ]
           },
           "configurations": {
             "production": {

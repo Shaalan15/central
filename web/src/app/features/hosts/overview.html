@@ -1,0 +1,164 @@
+<div class="overview">
+  <div class="range">
+    <mat-button-toggle-group
+      [value]="range()"
+      (change)="range.set($event.value)"
+      aria-label="Time range"
+      hideSingleSelectionIndicator
+    >
+      @for (r of ranges; track r) {
+        <mat-button-toggle [value]="r">{{ r }}</mat-button-toggle>
+      }
+    </mat-button-toggle-group>
+    @if (range() === '1h') {
+      <span class="live muted"><span class="dot"></span> Live</span>
+    }
+  </div>
+
+  <section class="charts">
+    <article class="card chart-card">
+      <h2><app-icon name="memory" [size]="18" /> CPU</h2>
+      <app-chart
+        [times]="data().t"
+        [window]="window()"
+        [series]="cpuSeries()"
+        [max]="100"
+        [format]="fmt.percent"
+      />
+    </article>
+    <article class="card chart-card">
+      <h2><app-icon name="storage" [size]="18" /> Memory</h2>
+      <app-chart
+        [times]="data().t"
+        [window]="window()"
+        [series]="memSeries()"
+        [max]="100"
+        [format]="fmt.percent"
+      />
+    </article>
+    <article class="card chart-card">
+      <h2><app-icon name="lan" [size]="18" /> Network</h2>
+      <app-chart
+        [times]="data().t"
+        [window]="window()"
+        [series]="netSeries()"
+        [format]="fmt.rate"
+      />
+    </article>
+    <article class="card chart-card">
+      <h2><app-icon name="speed" [size]="18" /> Load</h2>
+      <app-chart
+        [times]="data().t"
+        [window]="window()"
+        [series]="loadSeries()"
+        [format]="fmt.load"
+      />
+    </article>
+  </section>
+
+  <section class="details">
+    <article class="card">
+      <h2><app-icon name="database" [size]="18" /> Filesystems</h2>
+      @for (fs of sample()?.filesystems ?? []; track fs.mountpoint) {
+        <div class="fs">
+          <div class="fs-head">
+            <strong class="mono">{{ fs.mountpoint }}</strong
+            ><span class="muted">{{ bytes(fs.usedBytes) }} of {{ bytes(fs.totalBytes) }}</span>
+          </div>
+          <app-meter [value]="fsPercent(fs.usedBytes, fs.totalBytes)" />
+        </div>
+      } @empty {
+        <p class="muted">No data yet.</p>
+      }
+    </article>
+
+    <article class="card">
+      <h2><app-icon name="computer" [size]="18" /> System</h2>
+      @if (facts(); as f) {
+        <dl class="dl">
+          <dt>Operating system</dt>
+          <dd>{{ f.os?.prettyName }}</dd>
+          <dt>Kernel</dt>
+          <dd class="mono">{{ f.kernelRelease }}</dd>
+          <dt>CPU</dt>
+          <dd>{{ f.cpu?.model }} · {{ f.cpu?.threads }} threads</dd>
+          <dt>Memory</dt>
+          <dd>{{ bytes(f.memoryTotalBytes) }}</dd>
+          <dt>Virtualization</dt>
+          <dd>{{ f.virtualization || '—' }}</dd>
+          <dt>Booted</dt>
+          <dd>{{ dateTime(f.bootedAt) }}</dd>
+          <dt>Time zone</dt>
+          <dd>{{ f.timezone || '—' }}</dd>
+          <dt>Machine ID</dt>
+          <dd class="mono small">{{ f.machineId }}</dd>
+        </dl>
+      }
+    </article>
+
+    <article class="card">
+      <h2><app-icon name="verified_user" [size]="18" /> Agent</h2>
+      @if (ctx.agent(); as a) {
+        <dl class="dl">
+          <dt>Version</dt>
+          <dd>{{ a.summary?.agentVersion }}</dd>
+          <dt>Connected from</dt>
+          <dd class="mono">{{ a.remoteIp || '—' }}</dd>
+          <dt>Enrolled</dt>
+          <dd>{{ dateTime(a.enrolledAt) }} by {{ a.approvedBy?.display || '—' }}</dd>
+          <dt>Certificate</dt>
+          <dd>renews automatically · expires {{ dateTime(a.certificateExpiresAt) }}</dd>
+          @if (a.features.length) {
+            <dt>Features</dt>
+            <dd>{{ a.features.join(', ') }}</dd>
+          }
+        </dl>
+      }
+    </article>
+
+    <article class="card">
+      <h2><app-icon name="update" [size]="18" /> Updates</h2>
+      @if (ctx.agent()?.summary; as s) {
+        <div class="updates">
+          <div>
+            <span class="big tabular-nums">{{ s.updatesAvailable }}</span
+            ><span class="muted">available</span>
+          </div>
+          <div [class.danger]="s.securityUpdates">
+            <span class="big tabular-nums">{{ s.securityUpdates }}</span
+            ><span class="muted">security</span>
+          </div>
+          <div [class.warn]="s.rebootRequired">
+            <span class="big">{{ s.rebootRequired ? 'Yes' : 'No' }}</span
+            ><span class="muted">reboot required</span>
+          </div>
+        </div>
+        <a class="more" routerLink="../updates"
+          >Review updates <app-icon name="chevron_right" [size]="18"
+        /></a>
+      }
+    </article>
+
+    <article class="card">
+      <h2><app-icon name="policy" [size]="18" /> Owner policy</h2>
+      @if (policy(); as p) {
+        <p class="policy-line">
+          <span class="chip primary">{{ profiles[p.profile] ?? 'Unknown' }}</span>
+          @if (p.paused) {
+            <span class="chip warn">Remote operations paused</span>
+          }
+          <span class="muted">{{ p.allowed.length }} capabilities allowed</span>
+        </p>
+        <p class="muted small">
+          Set by the machine owner in <code>/etc/central-agent/policy.toml</code>; Central cannot
+          change it.
+        </p>
+        <a class="more" routerLink="../policy"
+          >View policy <app-icon name="chevron_right" [size]="18"
+        /></a>
+      } @else {
+        <p class="muted">Not reported yet.</p>
+      }
+    </article>
+  </section>
+</div>

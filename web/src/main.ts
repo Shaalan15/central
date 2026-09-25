@@ -1,3 +1,6 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { bootstrapApplication } from '@angular/platform-browser';
 
 import { App } from './app/app';

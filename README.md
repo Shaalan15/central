@@ -62,7 +62,14 @@ it for UI work and load tests before the real agent exists.
 
 Credentials are kept in `.central-sim/`, so later runs reconnect the same hosts without a key.
 In dev mode the gateway relaxes its per-IP enrollment limits so one machine can enroll a large
-simulated fleet.
+simulated fleet. Pass `--backfill 1h` to `central-sim` to fill the charts right away: on first
+connect each host sends an hour of history, like a real agent flushing its offline buffer.
+
+`web/e2e/smoke.mjs` is a browser smoke test in headless Chromium. It walks a fresh `--dev`
+instance through the setup wizard, owner account, TOTP enrollment and sign-in, starts 40
+simulated hosts, and saves dashboard and host screenshots in light, dark and mobile layouts. It
+fails on page errors and on any Content-Security-Policy or Trusted Types violation. The
+environment variables it reads are listed at the top of the file.
 
 `CENTRAL_SIM_AGENTS=1000 go test -run TestSimulatedFleet ./server/internal/app/` runs a
 self-contained load test. It starts Central, enrolls 1,000 simulated hosts and runs a
