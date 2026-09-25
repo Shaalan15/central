@@ -14,6 +14,7 @@ import (
 	"github.com/Shaalan15/central/server/internal/config"
 	"github.com/Shaalan15/central/server/internal/crypto"
 	"github.com/Shaalan15/central/server/internal/store"
+	"github.com/Shaalan15/central/server/internal/store/appwrite"
 	"github.com/Shaalan15/central/server/internal/store/memory"
 )
 
@@ -22,23 +23,6 @@ const AppwriteKeyPurpose = "storage.appwrite.api_key"
 
 // ErrNotConfigured is returned when no driver is configured.
 var ErrNotConfigured = errors.New("storage: no driver configured")
-
-// AppwriteOpener opens the Appwrite driver. It is registered by the appwrite package's init
-// (via RegisterAppwrite) to keep this package free of the SDK dependency in tests.
-type AppwriteOpener func(ctx context.Context, cfg config.AppwriteConfig, apiKey crypto.Secret) (store.Driver, error)
-
-// AppwriteTester checks an Appwrite configuration without persisting it.
-type AppwriteTester func(ctx context.Context, cfg config.AppwriteConfig, apiKey crypto.Secret) TestResult
-
-var (
-	openAppwrite AppwriteOpener
-	testAppwrite AppwriteTester
-)
-
-// RegisterAppwrite installs the Appwrite driver implementation.
-func RegisterAppwrite(open AppwriteOpener, test AppwriteTester) {
-	openAppwrite, testAppwrite = open, test
-}
 
 // TestResult reports a connectivity test.
 type TestResult struct {
@@ -67,14 +51,11 @@ func Open(ctx context.Context, cfg config.StorageConfig, kr *crypto.Keyring) (*s
 			d = md
 		}
 	case config.DriverAppwrite:
-		if openAppwrite == nil {
-			return nil, errors.New("storage: the Appwrite driver is not compiled into this build")
-		}
 		key, err := AppwriteKey(cfg.Appwrite, kr)
 		if err != nil {
 			return nil, err
 		}
-		ad, err := openAppwrite(ctx, cfg.Appwrite, key)
+		ad, err := appwrite.Open(cfg.Appwrite, key)
 		if err != nil {
 			return nil, err
 		}
@@ -107,10 +88,11 @@ func AppwriteKey(cfg config.AppwriteConfig, kr *crypto.Keyring) (crypto.Secret, 
 	return crypto.Secret(key), nil
 }
 
-// TestAppwrite runs the registered Appwrite connectivity test.
+// TestAppwrite checks an Appwrite configuration without persisting or creating anything.
 func TestAppwrite(ctx context.Context, cfg config.AppwriteConfig, apiKey crypto.Secret) TestResult {
-	if testAppwrite == nil {
-		return TestResult{Error: "the Appwrite driver is not compiled into this build"}
+	r := appwrite.Check(ctx, cfg, apiKey)
+	return TestResult{
+		OK: r.OK, ServerVersion: r.ServerVersion, VersionSupported: r.VersionSupported,
+		MissingScopes: r.MissingScopes, DatabaseExists: r.DatabaseExists, Error: r.Error,
 	}
-	return testAppwrite(ctx, cfg, apiKey)
 }

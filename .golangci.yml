@@ -57,6 +57,11 @@ linters:
           - gosec
           - noctx
           - unparam
+      # Test-only fakes panic on malformed input by design.
+      - path: appwritefake/
+        linters:
+          - forcetypeassert
+          - gosec
 
 formatters:
   enable:
