@@ -67,6 +67,9 @@ type Gateway struct {
 	MinAgentVersion string
 	// IdleTimeout closes streams without traffic (default 120s).
 	IdleTimeout time.Duration
+	// Relaxed raises the per-IP enrollment limits (development mode only, for load tests from
+	// one machine).
+	Relaxed bool
 
 	limitsOnce sync.Once
 	limits     struct {
@@ -85,6 +88,11 @@ func (g *Gateway) init() {
 		g.limits.enrollIP = ratelimit.New(60, 10*time.Minute, 30)
 		g.limits.enrollToken = ratelimit.New(600, 10*time.Minute, 100)
 		g.limits.pollIP = ratelimit.New(1200, 10*time.Minute, 200)
+		if g.Relaxed {
+			g.limits.enrollIP = ratelimit.New(20_000, 10*time.Minute, 2000)
+			g.limits.enrollToken = ratelimit.New(20_000, 10*time.Minute, 2000)
+			g.limits.pollIP = ratelimit.New(100_000, 10*time.Minute, 5000)
+		}
 		g.limits.connect = ratelimit.New(20, 10*time.Minute, 10)
 		g.limits.renew = ratelimit.New(6, time.Hour, 3)
 		g.limits.events = ratelimit.New(60, time.Minute, 30)

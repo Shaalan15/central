@@ -50,6 +50,25 @@ make dev-web      # terminal 2: Angular dev server on :4200
 make check        # lint + tests + vulnerability scan
 ```
 
+### Simulated agents
+
+`central-sim` runs agents that speak the real protocol. They have realistic metrics, inventory,
+pending updates, an owner-policy profile, a fake shell for the terminal, and a live journal. Use
+it for UI work and load tests before the real agent exists.
+
+1. Create an enrollment token in the UI (Enrollment → Tokens). An auto-approval token with
+   enough uses avoids approving each host by hand.
+2. Save the key to a file, then run `make sim KEY_FILE=key.txt AGENTS=50`.
+
+Credentials are kept in `.central-sim/`, so later runs reconnect the same hosts without a key.
+In dev mode the gateway relaxes its per-IP enrollment limits so one machine can enroll a large
+simulated fleet.
+
+`CENTRAL_SIM_AGENTS=1000 go test -run TestSimulatedFleet ./server/internal/app/` runs a
+self-contained load test. It starts Central, enrolls 1,000 simulated hosts and runs a
+fleet-wide upgrade job. Reference run: 1,000 agents online in 3.4 s, the job finished in 10 s,
+dispatch p99 was 22 ms, and heap was 280 MiB for Central and all simulated agents together.
+
 See [`CLAUDE.md`](CLAUDE.md) for conventions and [`docs/`](docs/) for architecture and security
 design.
 

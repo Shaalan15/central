@@ -101,8 +101,8 @@ dev-web: web/node_modules ## Run the Angular dev server on :4200 (proxies /api a
 	cd $(WEB) && npm start
 
 .PHONY: sim
-sim: ## Run 25 simulated agents against a local dev server
-	go run ./server/cmd/central-sim --agents 25
+sim: ## Run simulated agents against a local dev server (KEY_FILE=enrollment key file, AGENTS=25)
+	go run ./server/cmd/central-sim --agents $(or $(AGENTS),25) $(if $(KEY_FILE),--key-file $(KEY_FILE))
 
 # ---------------------------------------------------------------------------------------------
 # Quality gates

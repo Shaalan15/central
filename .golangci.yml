@@ -62,6 +62,11 @@ linters:
         linters:
           - forcetypeassert
           - gosec
+      # The simulator is development tooling that is never shipped to managed hosts: its
+      # random, bounded values and local state files are not security-relevant.
+      - path: (agentsim/|cmd/central-sim/)
+        linters:
+          - gosec
 
 formatters:
   enable:

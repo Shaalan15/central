@@ -45,8 +45,9 @@ func httpClient(pin, serverName string, cert *tls.Certificate, roots *x509.CertP
 	cfg := &tls.Config{
 		MinVersion: tls.VersionTLS13,
 		ServerName: serverName,
-		// Trust is established by the pin (and, after enrollment, by the received CA).
-		InsecureSkipVerify: roots == nil, //nolint:gosec // VerifyConnection enforces the CA pin
+		// Trust is established by the pin (and, after enrollment, by the received CA): before
+		// enrollment there are no roots, and VerifyConnection enforces the pin and the chain.
+		InsecureSkipVerify: roots == nil,
 		RootCAs:            roots,
 		VerifyConnection: func(cs tls.ConnectionState) error {
 			chain := cs.PeerCertificates
@@ -173,6 +174,7 @@ func (e *Enrollment) agent(c *agentv1.AgentCredentials) (*Agent, error) {
 	}
 	a := &Agent{
 		ID: c.GetAgentId(), OrgID: c.GetOrgId(), URL: e.url, pin: e.pin, serverName: e.serverName, roots: roots,
+		cas:  c.GetCaCertificatesDer(),
 		cert: tls.Certificate{Certificate: [][]byte{c.GetCertificateDer()}, PrivateKey: e.key}, Facts: e.facts,
 		keys: map[string]ed25519.PublicKey{}, seen: map[string]time.Time{},
 	}
@@ -192,6 +194,7 @@ type Agent struct {
 	pin        string
 	serverName string
 	roots      *x509.CertPool
+	cas        [][]byte
 	cert       tls.Certificate
 	client     agentv1connect.AgentServiceClient
 
@@ -208,9 +211,13 @@ type Handler func(ctx context.Context, conn *Conn, cmd *agentv1.Command) *agentv
 type Conn struct {
 	agent  *Agent
 	stream *connect.BidiStreamForClient[agentv1.AgentMessage, agentv1.CentralMessage]
+	ctx    context.Context
 	mu     sync.Mutex
 	Ack    *agentv1.HelloAck
 }
+
+// Context is cancelled when the stream ends.
+func (c *Conn) Context() context.Context { return c.ctx }
 
 // Send writes one message (safe for concurrent use).
 func (c *Conn) Send(m *agentv1.AgentMessage) error {
@@ -299,7 +306,7 @@ func (a *Agent) Run(ctx context.Context, handler Handler, onConnect func(*Conn))
 		case <-stopped:
 		}
 	}()
-	conn := &Conn{agent: a, stream: stream}
+	conn := &Conn{agent: a, stream: stream, ctx: ctx}
 	if err := conn.Send(a.hello()); err != nil {
 		return err
 	}

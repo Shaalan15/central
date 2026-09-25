@@ -181,6 +181,7 @@ func (a *App) initAgents() {
 	a.Gateway = &gateway.Gateway{
 		Holder: a.Holder, PKI: a.PKI, Fleet: a.Fleet, Enroll: a.Enroll, Dispatch: a.Dispatch, Sessions: a.Sessions,
 		Bus: a.Bus, Audit: a.Deps.Audit, Log: a.Log, AgentURL: a.Deps.AgentURL, MinAgentVersion: MinAgentVersion,
+		Relaxed: a.Config.Dev,
 	}
 	a.Terminal = &terminal.Service{
 		Holder: a.Holder, Fleet: a.Fleet, Dispatch: a.Dispatch, Sessions: a.Sessions, Auth: a.Deps.Sessions,
