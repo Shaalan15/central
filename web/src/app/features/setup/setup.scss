@@ -47,7 +47,8 @@
 .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0 12px;
+  align-items: start;
+  gap: 16px 12px;
 }
 .note {
   display: flex;

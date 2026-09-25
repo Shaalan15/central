@@ -71,7 +71,8 @@ import { Qr } from '../../shared/qr';
             </p>
             <div class="qr"><app-qr [value]="uri()" [size]="184" /></div>
             <p class="secret muted">
-              Or enter the key manually: <code>{{ groupedSecret() }}</code>
+              Or enter the key manually:
+              <code>{{ groupedSecret() }}</code>
             </p>
             <mat-form-field appearance="outline">
               <mat-label>6-digit code</mat-label>
@@ -143,8 +144,12 @@ import { Qr } from '../../shared/qr';
       padding: 8px;
     }
     .secret code {
+      display: block;
+      margin-top: 4px;
       font-family: ui-monospace, monospace;
-      word-break: break-all;
+      max-width: 20ch; /* two rows of four groups */
+      font-size: 15px;
+      color: var(--mat-sys-on-surface);
     }
     .codes {
       columns: 2;
