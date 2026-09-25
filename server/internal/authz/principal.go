@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,6 +122,26 @@ func (p *Principal) Permissions() []string {
 	return out
 }
 
+// Fingerprint identifies the principal's effective grants, so long-lived streams can tell when
+// roles or scopes changed.
+func (p *Principal) Fingerprint() string {
+	parts := make([]string, 0, len(p.bindings))
+	for _, b := range p.bindings {
+		perms := make([]string, 0, len(b.perms))
+		for perm := range b.perms {
+			perms = append(perms, perm)
+		}
+		sort.Strings(perms)
+		groups, tags := slices.Clone(b.scope.GroupIDs), slices.Clone(b.scope.Tags)
+		sort.Strings(groups)
+		sort.Strings(tags)
+		parts = append(parts, strings.Join(perms, ",")+"|"+strconv.FormatBool(b.scope.IsAll())+"|"+
+			strings.Join(groups, ",")+"|"+strings.Join(tags, ","))
+	}
+	sort.Strings(parts)
+	return p.OrgID + "#" + strings.Join(parts, ";")
+}
+
 // StepUpValidUntil returns when the current step-up expires (zero if none).
 func (p *Principal) StepUpValidUntil() time.Time {
 	if p.Session == nil || p.Session.StepUpAt.IsZero() {
@@ -180,6 +202,38 @@ func Require(ctx context.Context, perm string) (*Principal, error) {
 		return nil, err
 	}
 	return p, nil
+}
+
+// RequireHeld returns the principal if it holds perm, without the step-up check. Use it for
+// read-only views guarded by a step-up permission (e.g. listing enrollment tokens).
+func RequireHeld(ctx context.Context, perm string) (*Principal, error) {
+	p := From(ctx)
+	if p == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("sign in required"))
+	}
+	if p.OrgID == "" {
+		return nil, reasonErr(connect.CodePermissionDenied, ReasonNoOrganization, "you are not a member of any organization")
+	}
+	if !p.Has(perm) {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("missing permission "+perm))
+	}
+	return p, nil
+}
+
+// PermissionsOn returns the set of permissions the principal holds on one agent.
+func (p *Principal) PermissionsOn(a AgentRef) map[string]bool {
+	out := map[string]bool{}
+	for _, b := range p.bindings {
+		if !scopeMatches(b.scope, a) {
+			continue
+		}
+		for perm := range b.perms {
+			if p.Kind != store.PrincipalAPIKey || !apiKeyForbidden[perm] {
+				out[perm] = true
+			}
+		}
+	}
+	return out
 }
 
 // RequireOnAgent is Require for an action on a specific agent.

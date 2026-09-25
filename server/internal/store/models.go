@@ -323,7 +323,9 @@ type EnrollmentRequest struct {
 	DecidedByName   string     `json:"decided_by_name,omitempty"`
 	DecisionNote    string     `json:"decision_note,omitempty"`
 	AgentID         string     `json:"agent_id,omitempty"`
-	// Issued credentials, kept until the agent collects them (then cleared).
+	// PairingFailures counts approval attempts with a wrong pairing code.
+	PairingFailures int `json:"pairing_failures,omitempty"`
+	// Issued credentials, kept until the request is purged.
 	CertificateDER []byte `json:"certificate_der,omitempty"`
 }
 
@@ -357,30 +359,38 @@ const (
 
 // Agent is an enrolled machine.
 type Agent struct {
-	ID                string    `json:"id"`
-	OrgID             string    `json:"org_id"`
-	Name              string    `json:"name"`
-	Hostname          string    `json:"hostname"`
-	MachineID         string    `json:"machine_id"`
-	Lifecycle         string    `json:"lifecycle"`
-	Tags              []string  `json:"tags,omitempty"`
-	GroupID           string    `json:"group_id,omitempty"`
-	PublicKeySHA256   string    `json:"public_key_sha256"`
-	CertSerial        string    `json:"cert_serial"`
-	CertNotAfter      time.Time `json:"cert_not_after"`
-	EnrolledAt        time.Time `json:"enrolled_at"`
-	ApprovedBy        string    `json:"approved_by,omitempty"`
-	ApprovedByName    string    `json:"approved_by_name,omitempty"`
-	EnrollmentTokenID string    `json:"enrollment_token_id,omitempty"`
-	FactsProto        []byte    `json:"facts_proto,omitempty"`
-	PolicyProto       []byte    `json:"policy_proto,omitempty"`
-	AgentVersion      string    `json:"agent_version"`
-	Features          []string  `json:"features,omitempty"`
-	LastSeenAt        time.Time `json:"last_seen_at"`
-	LastIP            string    `json:"last_ip"`
-	RevokedAt         time.Time `json:"revoked_at"`
-	RevokedReason     string    `json:"revoked_reason,omitempty"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	OrgID           string    `json:"org_id"`
+	Name            string    `json:"name"`
+	Hostname        string    `json:"hostname"`
+	MachineID       string    `json:"machine_id"`
+	Lifecycle       string    `json:"lifecycle"`
+	Tags            []string  `json:"tags,omitempty"`
+	GroupID         string    `json:"group_id,omitempty"`
+	PublicKeySHA256 string    `json:"public_key_sha256"`
+	CertSerial      string    `json:"cert_serial"`
+	CertNotAfter    time.Time `json:"cert_not_after"`
+	// PrevCertSerial stays valid until PrevCertValidUntil after a renewal, so an agent can
+	// finish reconnecting with its new certificate.
+	PrevCertSerial     string    `json:"prev_cert_serial,omitempty"`
+	PrevCertValidUntil time.Time `json:"prev_cert_valid_until"`
+	EnrolledAt         time.Time `json:"enrolled_at"`
+	ApprovedBy         string    `json:"approved_by,omitempty"`
+	ApprovedByName     string    `json:"approved_by_name,omitempty"`
+	EnrollmentTokenID  string    `json:"enrollment_token_id,omitempty"`
+	FactsProto         []byte    `json:"facts_proto,omitempty"`
+	PolicyProto        []byte    `json:"policy_proto,omitempty"`
+	AgentVersion       string    `json:"agent_version"`
+	Features           []string  `json:"features,omitempty"`
+	LastSeenAt         time.Time `json:"last_seen_at"`
+	LastIP             string    `json:"last_ip"`
+	// Derived from the latest updates inventory (kept here so the fleet index loads fast).
+	UpdatesAvailable int       `json:"updates_available"`
+	SecurityUpdates  int       `json:"security_updates"`
+	RebootRequired   bool      `json:"reboot_required"`
+	RevokedAt        time.Time `json:"revoked_at"`
+	RevokedReason    string    `json:"revoked_reason,omitempty"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // EntityID implements Entity.

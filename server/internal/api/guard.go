@@ -23,9 +23,14 @@ import (
 	"github.com/Shaalan15/central/server/internal/audit"
 	"github.com/Shaalan15/central/server/internal/auth"
 	"github.com/Shaalan15/central/server/internal/authz"
+	"github.com/Shaalan15/central/server/internal/bus"
 	"github.com/Shaalan15/central/server/internal/config"
 	"github.com/Shaalan15/central/server/internal/crypto"
+	"github.com/Shaalan15/central/server/internal/dispatch"
+	"github.com/Shaalan15/central/server/internal/enrollment"
+	"github.com/Shaalan15/central/server/internal/fleet"
 	"github.com/Shaalan15/central/server/internal/httpx"
+	"github.com/Shaalan15/central/server/internal/pki"
 	"github.com/Shaalan15/central/server/internal/ratelimit"
 	"github.com/Shaalan15/central/server/internal/setup"
 	"github.com/Shaalan15/central/server/internal/store"
@@ -57,6 +62,13 @@ type Deps struct {
 	Version  string
 	Commit   string
 	Started  time.Time
+
+	// Agent management (nil until wired by the app).
+	Bus      bus.Bus
+	PKI      *pki.Authority
+	Fleet    *fleet.Index
+	Enroll   *enrollment.Service
+	Dispatch *dispatch.Dispatcher
 
 	limits limits
 }

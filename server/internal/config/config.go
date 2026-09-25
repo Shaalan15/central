@@ -93,6 +93,12 @@ type TLSConfig struct {
 // AgentConfig configures the agent listener (always TLS with the internal CA).
 type AgentConfig struct {
 	Addr string `toml:"addr"`
+	// ReleaseURL is where /install-agent.sh downloads agent packages from (a directory with
+	// central-agent_<version>_<arch>.deb, SHA256SUMS and SHA256SUMS.gpg).
+	ReleaseURL string `toml:"release_url"`
+	// ReleaseKeyFile is the armored OpenPGP public key that signs SHA256SUMS. Without it the
+	// installer refuses to download packages (install the .deb manually instead).
+	ReleaseKeyFile string `toml:"release_key_file"`
 }
 
 // StorageConfig selects and configures the storage driver.
@@ -221,6 +227,8 @@ func applyEnv(cfg *Config, env func(string) string) {
 	}
 	setStr(&cfg.HTTP.Addr, "CENTRAL_HTTP_ADDR")
 	setStr(&cfg.Agent.Addr, "CENTRAL_AGENT_ADDR")
+	setStr(&cfg.Agent.ReleaseURL, "CENTRAL_AGENT_RELEASE_URL")
+	setStr(&cfg.Agent.ReleaseKeyFile, "CENTRAL_AGENT_RELEASE_KEY_FILE")
 	setStr(&cfg.PublicURL, "CENTRAL_PUBLIC_URL")
 	setStr(&cfg.AgentURL, "CENTRAL_AGENT_URL")
 	setStr(&cfg.HTTP.TLS.Mode, "CENTRAL_TLS_MODE")
@@ -291,6 +299,11 @@ func (c *Config) Validate() error {
 	for _, p := range c.HTTP.TrustedProxies {
 		if _, err := ParsePrefix(p); err != nil {
 			errs = append(errs, fmt.Errorf("trusted_proxies: %w", err))
+		}
+	}
+	if c.Agent.ReleaseURL != "" {
+		if u, err := url.Parse(c.Agent.ReleaseURL); err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			errs = append(errs, errors.New("agent.release_url must be an https URL"))
 		}
 	}
 	for name, u := range map[string]string{"public_url": c.PublicURL, "agent_url": c.AgentURL} {

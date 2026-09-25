@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	apiv1 "github.com/Shaalan15/central/gen/go/central/api/v1"
 	"github.com/Shaalan15/central/gen/go/central/api/v1/apiv1connect"
 	"github.com/Shaalan15/central/server/internal/api"
 	"github.com/Shaalan15/central/server/internal/audit"
@@ -26,7 +28,13 @@ import (
 	"github.com/Shaalan15/central/server/internal/bus"
 	"github.com/Shaalan15/central/server/internal/config"
 	"github.com/Shaalan15/central/server/internal/crypto"
+	"github.com/Shaalan15/central/server/internal/dispatch"
+	"github.com/Shaalan15/central/server/internal/enrollment"
+	"github.com/Shaalan15/central/server/internal/fleet"
+	"github.com/Shaalan15/central/server/internal/gateway"
 	"github.com/Shaalan15/central/server/internal/httpx"
+	"github.com/Shaalan15/central/server/internal/metrics"
+	"github.com/Shaalan15/central/server/internal/pki"
 	"github.com/Shaalan15/central/server/internal/setup"
 	"github.com/Shaalan15/central/server/internal/storage"
 	"github.com/Shaalan15/central/server/internal/store"
@@ -54,11 +62,20 @@ type App struct {
 
 	Deps *api.Deps
 
+	// Agent management.
+	PKI      *pki.Authority
+	Metrics  *metrics.Store
+	Fleet    *fleet.Index
+	Dispatch *dispatch.Dispatcher
+	Enroll   *enrollment.Service
+	Gateway  *gateway.Gateway
+
 	trusted []netip.Prefix
 	webui   *webui.Handler
 
 	storeReadyOnce sync.Once
 	bgCtx          context.Context
+	bg             sync.WaitGroup
 }
 
 // New initializes an App: data directory, master key, storage (if configured) and setup state.
@@ -111,9 +128,10 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, build Build)
 	}
 	a.Deps.Passkeys = auth.NewPasskeys(a.Holder, a.Deps.PublicURL, extraOrigins)
 	a.Deps.Init()
+	a.initAgents()
 	a.bgCtx = ctx
 	if st := a.Holder.Get(); st != nil {
-		a.onStoreReady(st)
+		a.onStoreReady(st) //nolint:contextcheck // components load with the app's background context
 	}
 	return a, nil
 }
@@ -140,24 +158,84 @@ func loadKeyring(cfg *config.Config, log *slog.Logger) (*crypto.Keyring, error) 
 	return crypto.NewKeyring(key)
 }
 
+// MinAgentVersion is the oldest agent release Central supports.
+const MinAgentVersion = "0.1.0"
+
+// initAgents constructs the agent-management components (loaded once storage is ready).
+func (a *App) initAgents() {
+	a.PKI = pki.New(a.Holder, a.Keyring)
+	a.Metrics = metrics.NewStore(a.Holder, a.Log)
+	a.Fleet = fleet.New(a.Holder, a.Bus, a.Metrics, a.Log)
+	a.Dispatch = dispatch.New(a.Holder, a.PKI, a.Fleet, a.Bus, a.Log)
+	a.Enroll = &enrollment.Service{
+		Holder: a.Holder, PKI: a.PKI, Fleet: a.Fleet, Bus: a.Bus, Audit: a.Deps.Audit, Log: a.Log,
+		MinAgentVersion: MinAgentVersion,
+	}
+	a.Gateway = &gateway.Gateway{
+		Holder: a.Holder, PKI: a.PKI, Fleet: a.Fleet, Enroll: a.Enroll, Dispatch: a.Dispatch, Bus: a.Bus,
+		Audit: a.Deps.Audit, Log: a.Log, AgentURL: a.Deps.AgentURL, MinAgentVersion: MinAgentVersion,
+	}
+	d := a.Deps
+	d.Bus, d.PKI, d.Fleet, d.Enroll, d.Dispatch = a.Bus, a.PKI, a.Fleet, a.Enroll, a.Dispatch
+}
+
 // onStoreReady starts components that need storage. Called once, either at startup or when the
 // setup wizard configures storage.
 func (a *App) onStoreReady(st *store.Store) {
 	a.storeReadyOnce.Do(func() {
 		_ = st
-		go a.housekeeping(a.bgCtx)
+		ctx, cancel := context.WithTimeout(a.bgCtx, 2*time.Minute)
+		defer cancel()
+		if err := a.PKI.Load(ctx); err != nil {
+			a.Log.Error("loading the agent CA failed: agents cannot connect until this is fixed", "error", err)
+		} else {
+			a.Log.Info("agent CA ready", "ca_pin", a.PKI.Pin())
+		}
+		if err := a.Fleet.Load(ctx); err != nil {
+			a.Log.Error("loading the fleet index failed", "error", err)
+		}
+		if err := a.Dispatch.Recover(ctx); err != nil {
+			a.Log.Error("recovering unfinished commands failed", "error", err)
+		}
+		a.bg.Go(func() { a.housekeeping(a.bgCtx) })
 	})
 }
 
-// housekeeping runs periodic maintenance (expired sessions).
+// bgWait waits for background work (final flushes) after the context was cancelled.
+func (a *App) bgWait() { a.bg.Wait() }
+
+// housekeeping runs periodic maintenance: command expiry, metric persistence and retention,
+// enrollment expiry, last-seen persistence and expired sessions.
 func (a *App) housekeeping(ctx context.Context) {
-	t := time.NewTicker(10 * time.Minute)
-	defer t.Stop()
+	sweep := time.NewTicker(5 * time.Second)
+	minute := time.NewTicker(time.Minute)
+	tenMin := time.NewTicker(10 * time.Minute)
+	daily := time.NewTicker(24 * time.Hour)
+	defer sweep.Stop()
+	defer minute.Stop()
+	defer tenMin.Stop()
+	defer daily.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			if err := a.Metrics.Flush(flushCtx, true); err != nil {
+				a.Log.Warn("housekeeping: final metrics flush failed", "error", err)
+			}
+			a.Fleet.PersistLastSeen(flushCtx)
+			cancel()
 			return
-		case <-t.C:
+		case <-sweep.C:
+			a.Dispatch.Sweep(ctx)
+		case <-minute.C:
+			if err := a.Metrics.Flush(ctx, false); err != nil {
+				a.Log.Warn("housekeeping: metrics flush failed", "error", err)
+			}
+			if err := a.Enroll.ExpireStale(ctx); err != nil {
+				a.Log.Warn("housekeeping: expiring enrollment requests failed", "error", err)
+			}
+		case <-tenMin.C:
+			a.Fleet.PersistLastSeen(ctx)
 			if a.Deps == nil || !a.Setup.Complete() {
 				continue
 			}
@@ -166,6 +244,29 @@ func (a *App) housekeeping(ctx context.Context) {
 			} else if n > 0 {
 				a.Log.Debug("housekeeping: deleted expired sessions", "count", n)
 			}
+		case <-daily.C:
+			a.pruneMetrics(ctx)
+		}
+	}
+}
+
+func (a *App) pruneMetrics(ctx context.Context) {
+	st := a.Holder.Get()
+	if st == nil {
+		return
+	}
+	orgs, err := st.Orgs.All(ctx, store.System(), store.Query{})
+	if err != nil {
+		a.Log.Warn("housekeeping: listing organizations failed", "error", err)
+		return
+	}
+	for _, o := range orgs {
+		days := o.Settings.MetricsRetentionDays
+		if days <= 0 {
+			days = store.DefaultOrgSettings().MetricsRetentionDays
+		}
+		if err := a.Metrics.Prune(ctx, o.ID, time.Duration(days)*24*time.Hour); err != nil {
+			a.Log.Warn("housekeeping: pruning metrics failed", "org_id", o.ID, "error", err)
 		}
 	}
 }
@@ -198,7 +299,20 @@ func (a *App) Handler() http.Handler {
 	mux.Handle(apiv1connect.NewRoleServiceHandler(&api.RoleService{D: d}, opts...))
 	mux.Handle(apiv1connect.NewApiKeyServiceHandler(&api.APIKeyService{D: d}, opts...))
 	mux.Handle(apiv1connect.NewAuditServiceHandler(&api.AuditService{D: d}, opts...))
-	mux.Handle(apiv1connect.NewSystemServiceHandler(&api.SystemService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewSystemServiceHandler(&api.SystemService{
+		D: d, PKIExport: a.PKI.ExportItems,
+		Extra: func(info *apiv1.SystemInfo) {
+			if a.PKI.Loaded() {
+				info.CaPin = a.PKI.Pin()
+				info.CaNotAfter = timestamppb.New(a.PKI.CACertificate().NotAfter)
+			}
+			info.ConnectedAgents = uint32(a.Fleet.Connected()) //nolint:gosec // bounded by listener limits
+		},
+	}, opts...))
+	mux.Handle(apiv1connect.NewEnrollmentAdminServiceHandler(&api.EnrollmentAdminService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewFleetServiceHandler(&api.FleetService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewMetricsServiceHandler(&api.MetricsService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewHostServiceHandler(&api.HostService{D: d}, opts...))
 
 	apiHandler := httpx.Chain(mux,
 		httpx.NoStore(),
@@ -212,6 +326,8 @@ func (a *App) Handler() http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	root.HandleFunc("GET /readyz", a.ready)
+	root.HandleFunc("GET /install-agent.sh", a.serveInstallScript)
+	root.HandleFunc("GET /.well-known/central-agent.json", a.serveDiscovery)
 	root.Handle("/api/", http.StripPrefix("/api", apiHandler))
 	root.Handle("/", a.webui)
 
@@ -278,8 +394,14 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	a.Log.Info("web UI and API listening", "addr", ln.Addr().String(), "tls", a.Config.HTTP.TLS.Mode,
 		"version", a.Build.Version)
+	agentLn, err := lc.Listen(ctx, "tcp", a.Config.Agent.Addr)
+	if err != nil {
+		_ = ln.Close()
+		return fmt.Errorf("app: listen %s: %w", a.Config.Agent.Addr, err)
+	}
+	a.Log.Info("agent endpoint listening", "addr", agentLn.Addr().String())
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		if tlsCfg != nil {
 			errCh <- srv.ServeTLS(ln, "", "")
@@ -287,22 +409,34 @@ func (a *App) Run(ctx context.Context) error {
 			errCh <- srv.Serve(ln)
 		}
 	}()
+	gwCtx, stopGateway := context.WithCancel(ctx)
+	gwDone := make(chan struct{})
+	go func() {
+		defer close(gwDone)
+		if err := a.Gateway.Serve(gwCtx, agentLn); err != nil {
+			errCh <- fmt.Errorf("agent endpoint: %w", err)
+		}
+	}()
 
+	var runErr error
 	select {
 	case err := <-errCh:
 		if !errors.Is(err, http.ErrServerClosed) {
-			return err
+			runErr = err
 		}
 	case <-ctx.Done():
 	}
 	a.Log.Info("shutting down")
+	stopGateway()
+	<-gwDone
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
+	a.bgWait()
 	if st := a.Holder.Get(); st != nil {
 		if err := st.Close(); err != nil {
 			a.Log.Error("closing storage", "error", err)
 		}
 	}
-	return nil
+	return runErr
 }

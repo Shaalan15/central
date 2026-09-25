@@ -69,9 +69,28 @@ Agent (root, CLI)                          Central (agent listener)             
   | print pairing code                          |                                      |
   |-- GetEnrollmentStatus(wait=60s) ----------->|          Approvals: facts, flags --->|
   |                                             |<-- Approve(request, typed code) -----|
-  |<-- APPROVED + cert, CA, signing keys -------| issue cert, create agent (txn)        |
+  |<-- APPROVED + cert, CA, signing keys -------| issue cert, create agent             |
   | store credentials, start services           |                                      |
 ```
+
+Rules Central enforces (see `server/internal/enrollment`):
+
+- **Keys.** The secret is checked in constant time, and an unknown token and a wrong secret
+  produce the same error. Only after the secret matches does Central report token state
+  (expired, exhausted, revoked), source-CIDR mismatches and hostname-pattern mismatches.
+- **Uses.** Each accepted request consumes one use of the token, whether it is later approved or
+  not, so a leaked single-use key cannot create a queue of requests. A new request with the same
+  agent key supersedes that key's older pending request.
+- **Blocklist and quotas.** Denying with "block key" blocklists the agent's public key for the
+  organization. There are at most 500 pending requests per organization, plus per-IP and
+  per-token rate limits.
+- **Pairing codes.** The approver types the code shown on the host (case, dashes and spaces are
+  ignored, and Crockford aliases O→0 and I/L→1 apply). Ten wrong codes deny the request.
+- **Auto-approval.** A token with auto-approval approves only requests without warning-level
+  risk flags (duplicate machine-id, unsupported OS, outdated agent, many requests from one IP).
+  Flagged requests wait for a human.
+- **Re-enrollment.** Approving a request whose machine-id matches an active agent revokes that
+  agent.
 
 ### Control stream
 
@@ -110,6 +129,11 @@ Browser            Central                                   Agent (helper spawn
 | Offline metrics buffer | 240 samples |
 | Enrollment request lifetime | 24 h |
 | Client certificate lifetime | 30 days, renew at ~20 days |
+| Previous certificate after renewal | accepted for 24 h (only the current one may renew) |
+| Control stream idle timeout | 120 s without any message |
+| Queued commands per agent | 100 (memory only; lost on a Central restart and reported as expired) |
+| Metrics report | 1000 samples; samples older than 2 h or > 5 min in the future are dropped |
+| Inventory report | 8 MiB serialized |
 
 ## Versioning
 

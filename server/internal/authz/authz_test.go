@@ -131,3 +131,23 @@ func asConnect(err error, target **connect.Error) bool {
 	}
 	return ok
 }
+
+func TestFingerprintAndPermissionsOn(t *testing.T) {
+	a := principal(t, store.PrincipalUser,
+		store.RoleBinding{RoleID: RoleViewer, Scope: store.AgentScopeSpec{AllAgents: true}},
+		store.RoleBinding{RoleID: RoleOperator, Scope: store.AgentScopeSpec{Tags: []string{"web"}}})
+	b := principal(t, store.PrincipalUser,
+		store.RoleBinding{RoleID: RoleOperator, Scope: store.AgentScopeSpec{Tags: []string{"web"}}},
+		store.RoleBinding{RoleID: RoleViewer, Scope: store.AgentScopeSpec{AllAgents: true}})
+	c := principal(t, store.PrincipalUser,
+		store.RoleBinding{RoleID: RoleViewer, Scope: store.AgentScopeSpec{AllAgents: true}},
+		store.RoleBinding{RoleID: RoleOperator, Scope: store.AgentScopeSpec{Tags: []string{"db"}}})
+	if a.Fingerprint() != b.Fingerprint() || a.Fingerprint() == c.Fingerprint() {
+		t.Fatal("fingerprint must ignore binding order and reflect scopes")
+	}
+	on := a.PermissionsOn(AgentRef{ID: "x", Tags: []string{"web"}})
+	off := a.PermissionsOn(AgentRef{ID: "y"})
+	if !on[PackagesManage] || off[PackagesManage] || !off[FleetView] {
+		t.Fatalf("PermissionsOn: %v / %v", on, off)
+	}
+}

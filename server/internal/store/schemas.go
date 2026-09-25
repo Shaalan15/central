@@ -135,16 +135,18 @@ var (
 	EnrollmentRequestSchema = Schema[*EnrollmentRequest]{
 		SchemaInfo: SchemaInfo{
 			Name: "enrollment_requests", Tenant: true,
-			Fields: []Field{str("status", 16), str("source_ip", 64), num("created_at"), num("expires_at")},
+			Fields: []Field{
+				str("status", 16), str("source_ip", 64), str("public_key", 64), num("created_at"), num("expires_at"),
+			},
 			Indexes: []Index{
-				idx("status", false, "status"), idx("source_ip", false, "source_ip"),
-				idx("expiry", false, "expires_at"),
+				idx("status_created", false, "status", "created_at"), idx("source_ip", false, "source_ip"),
+				idx("public_key", false, "public_key"), idx("expiry", false, "expires_at"),
 			},
 		},
 		New: func() *EnrollmentRequest { return &EnrollmentRequest{} },
 		IndexOf: func(e *EnrollmentRequest) map[string]any {
 			return map[string]any{
-				"status": e.Status, "source_ip": e.SourceIP,
+				"status": e.Status, "source_ip": e.SourceIP, "public_key": e.PublicKeySHA256,
 				"created_at": Millis(e.CreatedAt), "expires_at": Millis(e.ExpiresAt),
 			}
 		},
@@ -198,16 +200,19 @@ var (
 	CommandSchema = Schema[*Command]{
 		SchemaInfo: SchemaInfo{
 			Name: "commands", Tenant: true,
-			Fields: []Field{str("agent_id", 36), str("job_id", 36), str("state", 16), num("created_at")},
+			Fields: []Field{
+				str("agent_id", 36), str("job_id", 36), str("state", 16), num("created_at"), num("expires_at"),
+			},
 			Indexes: []Index{
 				idx("agent", false, "agent_id", "created_at"), idx("job", false, "job_id"),
-				idx("created", false, "created_at"),
+				idx("created", false, "created_at"), idx("state", false, "state"),
 			},
 		},
 		New: func() *Command { return &Command{} },
 		IndexOf: func(c *Command) map[string]any {
 			return map[string]any{
 				"agent_id": c.AgentID, "job_id": c.JobID, "state": c.State, "created_at": Millis(c.CreatedAt),
+				"expires_at": Millis(c.ExpiresAt),
 			}
 		},
 	}
