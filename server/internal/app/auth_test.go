@@ -229,10 +229,12 @@ func TestAuthFlow(t *testing.T) {
 		t.Fatalf("second login: %v %v", lr, err)
 	}
 	b2.refreshCSRF()
-	if _, err := b2.auth.VerifyTotp(ctx, connect.NewRequest(&apiv1.VerifyTotpRequest{Code: totpCode(t, secret, time.Now())})); code(err) != connect.CodeUnauthenticated {
+	// Replay exactly the step used at enrollment (time.Now() could already be in the next step).
+	used := lastTOTPStep(t, env)
+	if _, err := b2.auth.VerifyTotp(ctx, connect.NewRequest(&apiv1.VerifyTotpRequest{Code: totpCode(t, secret, time.Unix(used*30, 0))})); code(err) != connect.CodeUnauthenticated {
 		t.Fatalf("replayed TOTP accepted: %v", err)
 	}
-	if _, err := b2.auth.VerifyTotp(ctx, connect.NewRequest(&apiv1.VerifyTotpRequest{Code: totpCode(t, secret, time.Now().Add(30*time.Second))})); err != nil {
+	if _, err := b2.auth.VerifyTotp(ctx, connect.NewRequest(&apiv1.VerifyTotpRequest{Code: totpCode(t, secret, time.Unix((used+1)*30, 0))})); err != nil {
 		t.Fatalf("next-step TOTP: %v", err)
 	}
 
@@ -380,6 +382,20 @@ func stepUp(t *testing.T, b *browser, secret string, at time.Time) {
 	})); err != nil {
 		t.Fatalf("FinishStepUp: %v", err)
 	}
+}
+
+// lastTOTPStep returns the most recent time step accepted for any TOTP credential.
+func lastTOTPStep(t *testing.T, env *testEnv) int64 {
+	t.Helper()
+	creds, err := env.app.Holder.Get().MFA.All(context.Background(), store.System(), store.Query{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var last int64
+	for _, c := range creds {
+		last = max(last, c.TOTPLastStep)
+	}
+	return last
 }
 
 // allowTOTPReuse resets the replay guard of every TOTP credential (simulates time passing).

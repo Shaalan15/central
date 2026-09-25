@@ -74,7 +74,8 @@ jobs:
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-          govulncheck ./gen/go/... ./server/...
+          # govulncheck needs a module directory (the repository root is a go.work workspace).
+          for m in gen/go server; do (cd "$m" && govulncheck ./...); done
 
   web:
     name: Web (lint, test, build)

@@ -137,7 +137,7 @@ lint-web: web/node_modules ## Lint and format-check the Angular code
 
 .PHONY: vuln
 vuln: ## Scan Go dependencies for known vulnerabilities
-	govulncheck $(GO_MODULES)
+	@for m in gen/go server; do (cd $$m && govulncheck ./...) || exit 1; done
 
 .PHONY: breaking
 breaking: ## Check the Protobuf contracts for breaking changes against main

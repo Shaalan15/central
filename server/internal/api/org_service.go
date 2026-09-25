@@ -206,8 +206,10 @@ func bindingsFromProto(ctx context.Context, st *store.Store, p *authz.Principal,
 		if err != nil {
 			return nil, err
 		}
-		if id == authz.RoleOwner || id == authz.RoleAdmin {
-			sc = store.AgentScopeSpec{AllAgents: true} // org-wide roles are never scoped
+		if (id == authz.RoleOwner || id == authz.RoleAdmin) && !sc.IsAll() {
+			// Org-wide roles carry organization permissions that cannot be limited to agents;
+			// refuse instead of silently widening the requested scope.
+			return nil, fmt.Errorf("the %s role applies to the whole organization and cannot be limited to agents", id)
 		}
 		out = append(out, store.RoleBinding{RoleID: id, Scope: sc})
 	}
