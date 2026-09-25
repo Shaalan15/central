@@ -31,9 +31,6 @@ linters:
   settings:
     gosec:
       excludes: []
-      config:
-        global:
-          audit: true
     revive:
       rules:
         - name: exported
