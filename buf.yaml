@@ -1,0 +1,17 @@
+# Buf workspace: lint + breaking-change detection for the wire contracts.
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+    - COMMENTS
+  except:
+    # Streaming RPCs share request/response envelope types by design.
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+  rpc_allow_google_protobuf_empty_requests: false
+breaking:
+  use:
+    - WIRE_JSON
