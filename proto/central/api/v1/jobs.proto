@@ -1,0 +1,202 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/agent/v1/command.proto";
+import "central/api/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// JobService runs one operation across many agents with a controlled rollout
+// (e.g. "apt upgrade on every web server, 10 at a time, stop if more than 5% fail").
+service JobService {
+  // PreviewTargets resolves a selector to the agents it would target right now.
+  rpc PreviewTargets(PreviewTargetsRequest) returns (PreviewTargetsResponse);
+  // CreateJob starts a job (permission jobs.run plus the operation's own permission on every
+  // target; step-up; confirm_target_count required above the organization's threshold).
+  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
+  // ListJobs lists jobs (newest first).
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+  // GetJob returns one job.
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+  // CancelJob stops scheduling new batches and cancels running commands.
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+  // ListJobExecutions lists per-agent results of a job.
+  rpc ListJobExecutions(ListJobExecutionsRequest) returns (ListJobExecutionsResponse);
+  // WatchJob streams job progress until the job finishes.
+  rpc WatchJob(WatchJobRequest) returns (stream WatchJobResponse);
+}
+
+// TargetSelector chooses agents. Agents matching any of agent_ids, or (all tags AND any group)
+// are selected; `all_agents` selects the whole organization.
+message TargetSelector {
+  repeated string agent_ids = 1;
+  repeated string tags = 2;
+  repeated string group_ids = 3;
+  bool all_agents = 4;
+  // Skip agents that are offline when their batch starts (default: queue until TTL).
+  bool online_only = 5;
+}
+
+// RolloutStrategy controls pacing and safety.
+message RolloutStrategy {
+  // Agents per batch; 0 means all at once.
+  uint32 batch_size = 1;
+  // Maximum commands in flight at once; 0 means batch_size.
+  uint32 max_concurrency = 2;
+  // Abort the job when the failure percentage exceeds this (0..100; 0 = abort on first
+  // failure, 100 = never abort).
+  uint32 max_failure_percent = 3;
+  // Pause between batches.
+  google.protobuf.Duration batch_delay = 4;
+}
+
+// JobState is the lifecycle of a job.
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_PENDING = 1;
+  JOB_STATE_RUNNING = 2;
+  JOB_STATE_SUCCEEDED = 3;
+  // Finished, but some agents failed (below the abort threshold).
+  JOB_STATE_PARTIALLY_FAILED = 4;
+  // Aborted because the failure threshold was exceeded.
+  JOB_STATE_ABORTED = 5;
+  JOB_STATE_CANCELLED = 6;
+}
+
+// JobCounts aggregates execution states.
+message JobCounts {
+  uint32 total = 1;
+  uint32 pending = 2;
+  uint32 running = 3;
+  uint32 succeeded = 4;
+  uint32 failed = 5;
+  // Refused by the agent (policy, paused, ...).
+  uint32 rejected = 6;
+  // Not attempted (offline, cancelled, aborted).
+  uint32 skipped = 7;
+}
+
+// Job is a fleet-wide operation.
+message Job {
+  string id = 1;
+  string name = 2;
+  string operation_type = 3;
+  // Operation with secret fields removed.
+  central.agent.v1.Operation operation = 4;
+  TargetSelector selector = 5;
+  RolloutStrategy rollout = 6;
+  JobState state = 7;
+  JobCounts counts = 8;
+  PrincipalRef created_by = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp started_at = 11;
+  google.protobuf.Timestamp finished_at = 12;
+  google.protobuf.Duration command_ttl = 13;
+}
+
+// JobExecution is one agent's part of a job.
+message JobExecution {
+  string job_id = 1;
+  string agent_id = 2;
+  string agent_name = 3;
+  string command_id = 4;
+  central.agent.v1.CommandState state = 5;
+  central.agent.v1.CommandError error = 6;
+  uint32 batch = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp finished_at = 9;
+}
+
+// PreviewTargetsRequest carries a selector.
+message PreviewTargetsRequest {
+  TargetSelector selector = 1;
+}
+
+// PreviewTargetsResponse lists what would be targeted.
+message PreviewTargetsResponse {
+  uint32 count = 1;
+  uint32 online = 2;
+  // Up to 50 agents for display.
+  repeated string sample_agent_ids = 3;
+  repeated string sample_agent_names = 4;
+}
+
+// CreateJobRequest defines a job.
+message CreateJobRequest {
+  string name = 1;
+  central.agent.v1.Operation operation = 2;
+  TargetSelector selector = 3;
+  RolloutStrategy rollout = 4;
+  // Must equal the resolved target count when it exceeds the organization's
+  // mass_action_confirm_threshold.
+  uint32 confirm_target_count = 5;
+  // Per-command TTL (default 1h, max 24h).
+  google.protobuf.Duration command_ttl = 6;
+}
+
+// CreateJobResponse returns the job.
+message CreateJobResponse {
+  Job job = 1;
+}
+
+// ListJobsRequest pages jobs.
+message ListJobsRequest {
+  PageRequest page = 1;
+  repeated JobState states = 2;
+}
+
+// ListJobsResponse is a page of jobs.
+message ListJobsResponse {
+  repeated Job jobs = 1;
+  PageResponse page = 2;
+}
+
+// GetJobRequest identifies a job.
+message GetJobRequest {
+  string job_id = 1;
+}
+
+// GetJobResponse returns the job.
+message GetJobResponse {
+  Job job = 1;
+}
+
+// CancelJobRequest identifies a job.
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+// CancelJobResponse returns the job.
+message CancelJobResponse {
+  Job job = 1;
+}
+
+// ListJobExecutionsRequest pages executions.
+message ListJobExecutionsRequest {
+  string job_id = 1;
+  repeated central.agent.v1.CommandState states = 2;
+  PageRequest page = 3;
+}
+
+// ListJobExecutionsResponse is a page of executions.
+message ListJobExecutionsResponse {
+  repeated JobExecution executions = 1;
+  PageResponse page = 2;
+}
+
+// WatchJobRequest identifies a job.
+message WatchJobRequest {
+  string job_id = 1;
+}
+
+// WatchJobResponse is one progress event.
+message WatchJobResponse {
+  oneof event {
+    Job job = 1;
+    JobExecution execution = 2;
+  }
+}

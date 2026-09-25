@@ -1,0 +1,232 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/agent/v1/host.proto";
+import "central/api/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// EnrollmentAdminService manages enrollment tokens and the approval queue.
+service EnrollmentAdminService {
+  // CreateEnrollmentToken creates a token and returns the enrollment key (shown once).
+  // Permission tokens.manage.
+  rpc CreateEnrollmentToken(CreateEnrollmentTokenRequest) returns (CreateEnrollmentTokenResponse);
+  // ListEnrollmentTokens lists tokens (never their secrets).
+  rpc ListEnrollmentTokens(ListEnrollmentTokensRequest) returns (ListEnrollmentTokensResponse);
+  // RevokeEnrollmentToken stops a token from accepting new enrollments.
+  rpc RevokeEnrollmentToken(RevokeEnrollmentTokenRequest) returns (RevokeEnrollmentTokenResponse);
+  // ListEnrollmentRequests lists enrollment requests (the approval queue by default).
+  rpc ListEnrollmentRequests(ListEnrollmentRequestsRequest) returns (ListEnrollmentRequestsResponse);
+  // GetEnrollmentRequest returns one request with its facts and risk flags.
+  rpc GetEnrollmentRequest(GetEnrollmentRequestRequest) returns (GetEnrollmentRequestResponse);
+  // ApproveEnrollmentRequest approves a pending request. The caller must type the pairing code
+  // shown on the host; it must match. Permission agents.approve, step-up.
+  rpc ApproveEnrollmentRequest(ApproveEnrollmentRequestRequest) returns (ApproveEnrollmentRequestResponse);
+  // DenyEnrollmentRequest denies a pending request and optionally blocks the agent's key.
+  rpc DenyEnrollmentRequest(DenyEnrollmentRequestRequest) returns (DenyEnrollmentRequestResponse);
+}
+
+// ApprovalMode says whether enrollments with a token need a human decision.
+enum ApprovalMode {
+  APPROVAL_MODE_UNSPECIFIED = 0;
+  // Every enrollment waits in the approval queue (default).
+  APPROVAL_MODE_MANUAL = 1;
+  // Enrollments that pass all hard checks are approved immediately (automation). Requires
+  // max_uses and a bounded expiry; recommended together with allowed_cidrs.
+  APPROVAL_MODE_AUTO = 2;
+}
+
+// EnrollmentTokenState is derived from expiry, uses and revocation.
+enum EnrollmentTokenState {
+  ENROLLMENT_TOKEN_STATE_UNSPECIFIED = 0;
+  ENROLLMENT_TOKEN_STATE_ACTIVE = 1;
+  ENROLLMENT_TOKEN_STATE_EXPIRED = 2;
+  ENROLLMENT_TOKEN_STATE_EXHAUSTED = 3;
+  ENROLLMENT_TOKEN_STATE_REVOKED = 4;
+}
+
+// EnrollmentToken authorizes agents to request enrollment.
+message EnrollmentToken {
+  string id = 1;
+  string name = 2;
+  EnrollmentTokenState state = 3;
+  ApprovalMode approval_mode = 4;
+  // Maximum enrollments (1..10000).
+  uint32 max_uses = 5;
+  uint32 uses = 6;
+  // Source IP ranges allowed to enroll (CIDR). Empty allows any. Enforced: requests from other
+  // addresses are rejected before a request is created.
+  repeated string allowed_cidrs = 7;
+  // Glob the reported hostname must match (e.g. "web-*"). Empty allows any. Enforced.
+  string hostname_pattern = 8;
+  // Tags applied to agents enrolled with this token.
+  repeated string default_tags = 9;
+  // Group applied to agents enrolled with this token.
+  string default_group_id = 10;
+  PrincipalRef created_by = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp expires_at = 13;
+  google.protobuf.Timestamp last_used_at = 14;
+  google.protobuf.Timestamp revoked_at = 15;
+}
+
+// CreateEnrollmentTokenRequest defines a token.
+message CreateEnrollmentTokenRequest {
+  string name = 1;
+  ApprovalMode approval_mode = 2;
+  uint32 max_uses = 3;
+  // Validity (default 24h, max 30d; max 7d for AUTO).
+  google.protobuf.Duration expires_in = 4;
+  repeated string allowed_cidrs = 5;
+  string hostname_pattern = 6;
+  repeated string default_tags = 7;
+  string default_group_id = 8;
+}
+
+// CreateEnrollmentTokenResponse returns the key and ready-made install instructions.
+message CreateEnrollmentTokenResponse {
+  EnrollmentToken token = 1;
+  // The enrollment key: "cek1.<token_id>.<secret>.<ca_pin>" (shown once).
+  string enrollment_key = 2;
+  // URL the agent should use (the configured agent URL).
+  string agent_url = 3;
+  // Suggested install command for Ubuntu/Debian.
+  string install_command = 4;
+}
+
+// ListEnrollmentTokensRequest filters tokens.
+message ListEnrollmentTokensRequest {
+  // Include expired, exhausted and revoked tokens.
+  bool include_inactive = 1;
+}
+
+// ListEnrollmentTokensResponse lists tokens.
+message ListEnrollmentTokensResponse {
+  repeated EnrollmentToken tokens = 1;
+}
+
+// RevokeEnrollmentTokenRequest identifies a token.
+message RevokeEnrollmentTokenRequest {
+  string token_id = 1;
+}
+
+// RevokeEnrollmentTokenResponse returns the revoked token.
+message RevokeEnrollmentTokenResponse {
+  EnrollmentToken token = 1;
+}
+
+// EnrollmentRequestStatus mirrors central.agent.v1.EnrollmentStatus for the admin view.
+enum EnrollmentRequestStatus {
+  ENROLLMENT_REQUEST_STATUS_UNSPECIFIED = 0;
+  ENROLLMENT_REQUEST_STATUS_PENDING = 1;
+  ENROLLMENT_REQUEST_STATUS_APPROVED = 2;
+  ENROLLMENT_REQUEST_STATUS_DENIED = 3;
+  ENROLLMENT_REQUEST_STATUS_EXPIRED = 4;
+}
+
+// RiskSeverity ranks risk flags.
+enum RiskSeverity {
+  RISK_SEVERITY_UNSPECIFIED = 0;
+  RISK_SEVERITY_INFO = 1;
+  RISK_SEVERITY_WARNING = 2;
+  RISK_SEVERITY_CRITICAL = 3;
+}
+
+// RiskFlag is a signal that deserves the approver's attention.
+message RiskFlag {
+  // Machine-readable code, e.g. "duplicate_machine_id", "duplicate_hostname",
+  // "unsupported_os", "outdated_agent", "many_requests_from_ip", "source_ip_not_on_host",
+  // "clock_skew".
+  string code = 1;
+  RiskSeverity severity = 2;
+  // Human-readable explanation.
+  string message = 3;
+}
+
+// EnrollmentRequest is an agent asking to join.
+message EnrollmentRequest {
+  string id = 1;
+  EnrollmentRequestStatus status = 2;
+  string token_id = 3;
+  string token_name = 4;
+  // Pairing code (the approver must type the code printed on the host to approve).
+  string pairing_code = 5;
+  central.agent.v1.HostFacts facts = 6;
+  string agent_version = 7;
+  // Source IP as seen by Central (after trusted-proxy handling).
+  string source_ip = 8;
+  // SHA-256 of the agent key's SubjectPublicKeyInfo, lowercase hex.
+  string public_key_sha256 = 9;
+  repeated RiskFlag risk_flags = 10;
+  // An existing agent with the same machine-id that approval would replace (revoke).
+  string replaces_agent_id = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp expires_at = 13;
+  google.protobuf.Timestamp decided_at = 14;
+  PrincipalRef decided_by = 15;
+  // Denial reason or approval note.
+  string decision_note = 16;
+  // Agent created on approval.
+  string agent_id = 17;
+}
+
+// ListEnrollmentRequestsRequest filters requests.
+message ListEnrollmentRequestsRequest {
+  // Default: PENDING only.
+  repeated EnrollmentRequestStatus statuses = 1;
+  PageRequest page = 2;
+}
+
+// ListEnrollmentRequestsResponse is a page of requests.
+message ListEnrollmentRequestsResponse {
+  repeated EnrollmentRequest requests = 1;
+  PageResponse page = 2;
+}
+
+// GetEnrollmentRequestRequest identifies a request.
+message GetEnrollmentRequestRequest {
+  string request_id = 1;
+}
+
+// GetEnrollmentRequestResponse returns the request.
+message GetEnrollmentRequestResponse {
+  EnrollmentRequest request = 1;
+}
+
+// ApproveEnrollmentRequestRequest approves with confirmation of the pairing code.
+message ApproveEnrollmentRequestRequest {
+  string request_id = 1;
+  // The code printed on the host, typed by the approver. Case and dash insensitive.
+  string pairing_code = 2;
+  // Display name for the agent (default: hostname).
+  string name = 3;
+  // Tags (default: the token's default tags).
+  repeated string tags = 4;
+  // Group (default: the token's default group).
+  string group_id = 5;
+  string note = 6;
+}
+
+// ApproveEnrollmentRequestResponse returns the updated request (with agent_id).
+message ApproveEnrollmentRequestResponse {
+  EnrollmentRequest request = 1;
+}
+
+// DenyEnrollmentRequestRequest denies a request.
+message DenyEnrollmentRequestRequest {
+  string request_id = 1;
+  string reason = 2;
+  // Block the agent's public key from enrolling again.
+  bool block_key = 3;
+  // Also revoke the token used.
+  bool revoke_token = 4;
+}
+
+// DenyEnrollmentRequestResponse returns the updated request.
+message DenyEnrollmentRequestResponse {
+  EnrollmentRequest request = 1;
+}

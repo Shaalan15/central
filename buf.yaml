@@ -7,6 +7,11 @@ lint:
     - STANDARD
     - COMMENTS
   except:
+    # Every service, RPC, message and enum must be documented; fields and enum values are
+    # documented where the name alone is not self-explanatory.
+    - COMMENT_FIELD
+    - COMMENT_ENUM_VALUE
+    - COMMENT_ONEOF
     # Streaming RPCs share request/response envelope types by design.
     - RPC_REQUEST_RESPONSE_UNIQUE
     - RPC_REQUEST_STANDARD_NAME

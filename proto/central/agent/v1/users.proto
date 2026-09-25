@@ -1,0 +1,163 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Linux user and group management (Phase 1b).
+//
+// Names must match ^[a-z_][a-z0-9_-]{0,31}$. Tools are invoked with argv (useradd, usermod,
+// userdel, groupadd, gpasswd, chpasswd); passwords are only ever written to chpasswd's stdin.
+// Users/groups protected by the owner policy (always including root and the agent's own user)
+// cannot be modified. Adding users to privileged groups (sudo, adm, root, wheel, disk, shadow,
+// docker, lxd) requires the policy's `allow_privileged_groups`.
+
+// LinuxUser is a local account from /etc/passwd (+ /etc/shadow status).
+message LinuxUser {
+  string name = 1;
+  uint32 uid = 2;
+  uint32 gid = 3;
+  // GECOS full name.
+  string full_name = 4;
+  string home = 5;
+  string shell = 6;
+  // Supplementary groups.
+  repeated string groups = 7;
+  // Password locked (`passwd -S` status L).
+  bool locked = 8;
+  // Has a usable password.
+  bool has_password = 9;
+  // UID < 1000 (system account).
+  bool system = 10;
+  // Can use sudo (member of sudo/admin group or matching sudoers rule).
+  bool sudo = 11;
+  google.protobuf.Timestamp last_login_at = 12;
+  // Number of keys in ~/.ssh/authorized_keys.
+  uint32 authorized_key_count = 13;
+  // Protected by the owner policy.
+  bool protected = 14;
+}
+
+// LinuxGroup is a local group from /etc/group.
+message LinuxGroup {
+  string name = 1;
+  uint32 gid = 2;
+  repeated string members = 3;
+  bool system = 4;
+}
+
+// UserInventory lists local users and groups.
+message UserInventory {
+  repeated LinuxUser users = 1;
+  repeated LinuxGroup groups = 2;
+}
+
+// UserList lists local users and groups. Capability: USERS_READ.
+message UserList {
+  bool include_system = 1;
+}
+
+// UserListResult is the result of UserList.
+message UserListResult {
+  repeated LinuxUser users = 1;
+  repeated LinuxGroup groups = 2;
+}
+
+// UserCreate creates a local account. Capability: USERS_MANAGE.
+message UserCreate {
+  string name = 1;
+  string full_name = 2;
+  // Login shell (must be listed in /etc/shells). Default /bin/bash.
+  string shell = 3;
+  // Create the home directory (default true).
+  bool create_home = 4;
+  repeated string groups = 5;
+  // System account (UID < 1000).
+  bool system = 6;
+  // Initial password (write-only; sent to chpasswd via stdin). Empty leaves the account locked.
+  string password = 7;
+  // Initial ~/.ssh/authorized_keys lines.
+  repeated string authorized_keys = 8;
+}
+
+// UserModify changes an existing account. Capability: USERS_MANAGE.
+message UserModify {
+  string name = 1;
+  // Fields to change; unset fields are left alone.
+  optional string full_name = 2;
+  optional string shell = 3;
+  // Replaces the supplementary group list when set.
+  StringList groups = 4;
+  optional bool locked = 5;
+}
+
+// StringList wraps a repeated string so "unset" and "empty" can be distinguished.
+message StringList {
+  repeated string values = 1;
+}
+
+// UserDelete removes an account. Capability: USERS_MANAGE.
+message UserDelete {
+  string name = 1;
+  // Also remove the home directory and mail spool (`userdel -r`).
+  bool remove_home = 2;
+}
+
+// UserSetPassword sets a password. Capability: USERS_MANAGE.
+message UserSetPassword {
+  string name = 1;
+  // New password (write-only; sent to chpasswd via stdin).
+  string password = 2;
+  // Force a change at next login (`chage -d 0`).
+  bool expire = 3;
+}
+
+// GroupCreate creates a group. Capability: USERS_MANAGE.
+message GroupCreate {
+  string name = 1;
+  bool system = 2;
+}
+
+// GroupDelete deletes a group. Capability: USERS_MANAGE.
+message GroupDelete {
+  string name = 1;
+}
+
+// GroupSetMembers replaces a group's member list. Capability: USERS_MANAGE.
+message GroupSetMembers {
+  string name = 1;
+  repeated string members = 2;
+}
+
+// AuthorizedKeysGet reads a user's ~/.ssh/authorized_keys. Capability: USERS_READ.
+message AuthorizedKeysGet {
+  string user = 1;
+}
+
+// AuthorizedKeysResult is the result of AuthorizedKeysGet.
+message AuthorizedKeysResult {
+  repeated AuthorizedKey keys = 1;
+}
+
+// AuthorizedKey is one line of an authorized_keys file.
+message AuthorizedKey {
+  // Full line as it appears in the file.
+  string line = 1;
+  // Key type, e.g. "ssh-ed25519".
+  string type = 2;
+  // SHA256 fingerprint as printed by ssh-keygen -l.
+  string fingerprint = 3;
+  string comment = 4;
+  // Options prefix, e.g. "from=\"10.0.0.0/8\"".
+  string options = 5;
+}
+
+// AuthorizedKeysSet replaces a user's ~/.ssh/authorized_keys (created 0600, directory 0700,
+// owned by the user). Every line is validated before writing. Capability: USERS_MANAGE.
+message AuthorizedKeysSet {
+  string user = 1;
+  repeated string lines = 2;
+}

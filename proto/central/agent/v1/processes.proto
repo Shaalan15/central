@@ -1,0 +1,71 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Process is one entry from /proc.
+message Process {
+  uint32 pid = 1;
+  uint32 ppid = 2;
+  string user = 3;
+  // Short command name (comm).
+  string name = 4;
+  // Full command line, NUL separators replaced with spaces, truncated to 4 KiB.
+  string command_line = 5;
+  // Process state letter (R, S, D, Z, T, I).
+  string state = 6;
+  // CPU usage over the sampling window, 100 = one full core.
+  double cpu_percent = 7;
+  uint64 rss_bytes = 8;
+  uint32 threads = 9;
+  google.protobuf.Timestamp started_at = 10;
+  // systemd unit the process belongs to, if any.
+  string unit = 11;
+}
+
+// ProcessList lists processes. Capability: PROCESSES_READ.
+message ProcessList {
+  // Sort key.
+  enum SortBy {
+    SORT_BY_UNSPECIFIED = 0;
+    SORT_BY_CPU = 1;
+    SORT_BY_MEMORY = 2;
+    SORT_BY_PID = 3;
+  }
+  SortBy sort_by = 1;
+  // Maximum processes returned (default 200, max 5000).
+  uint32 limit = 2;
+}
+
+// ProcessListResult is the result of ProcessList.
+message ProcessListResult {
+  repeated Process processes = 1;
+  // Total processes on the host.
+  uint32 total = 2;
+}
+
+// ProcessSignal sends a signal to a process. Capability: PROCESSES_SIGNAL.
+// The helper refuses PID 1, kernel threads, and the agent's own processes.
+message ProcessSignal {
+  uint32 pid = 1;
+  // Signal is the POSIX signal to send.
+  enum Signal {
+    SIGNAL_UNSPECIFIED = 0;
+    SIGNAL_TERM = 1;
+    SIGNAL_KILL = 2;
+    SIGNAL_HUP = 3;
+    SIGNAL_INT = 4;
+    SIGNAL_USR1 = 5;
+    SIGNAL_USR2 = 6;
+    SIGNAL_STOP = 7;
+    SIGNAL_CONT = 8;
+  }
+  Signal signal = 2;
+  // Expected process start time (from ProcessList). If set and it does not match, the signal is
+  // not sent: protects against PID reuse between listing and acting.
+  google.protobuf.Timestamp expected_started_at = 3;
+}

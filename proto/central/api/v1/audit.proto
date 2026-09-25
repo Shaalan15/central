@@ -1,0 +1,81 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/api/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// AuditService exposes the tamper-evident audit log (permission audit.view).
+service AuditService {
+  // ListAuditEvents pages audit events (newest first).
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
+  // VerifyAuditChain recomputes the hash chain over a range and reports the first mismatch.
+  rpc VerifyAuditChain(VerifyAuditChainRequest) returns (VerifyAuditChainResponse);
+}
+
+// AuditResult is the outcome of an audited action.
+enum AuditResult {
+  AUDIT_RESULT_UNSPECIFIED = 0;
+  AUDIT_RESULT_SUCCESS = 1;
+  AUDIT_RESULT_FAILURE = 2;
+  // Refused by authorization (permission, scope, step-up, policy).
+  AUDIT_RESULT_DENIED = 3;
+}
+
+// AuditEvent is one entry in the organization's audit chain.
+message AuditEvent {
+  string id = 1;
+  // Monotonic sequence number within the organization's chain.
+  uint64 seq = 2;
+  google.protobuf.Timestamp time = 3;
+  PrincipalRef actor = 4;
+  // Dotted action name, e.g. "agent.approve", "command.issue", "auth.login".
+  string action = 5;
+  // Target type, e.g. "agent", "user", "enrollment_token".
+  string target_type = 6;
+  string target_id = 7;
+  string target_display = 8;
+  AuditResult result = 9;
+  string source_ip = 10;
+  string user_agent = 11;
+  // Action-specific details. Never contains secrets.
+  map<string, string> details = 12;
+  // SHA-256 over the previous hash and this event's canonical encoding (lowercase hex).
+  string hash = 13;
+  string prev_hash = 14;
+}
+
+// ListAuditEventsRequest filters audit events.
+message ListAuditEventsRequest {
+  PageRequest page = 1;
+  string actor_id = 2;
+  // Prefix match, e.g. "agent." for all agent actions.
+  string action_prefix = 3;
+  string target_id = 4;
+  google.protobuf.Timestamp since = 5;
+  google.protobuf.Timestamp until = 6;
+  repeated AuditResult results = 7;
+}
+
+// ListAuditEventsResponse is a page of events.
+message ListAuditEventsResponse {
+  repeated AuditEvent events = 1;
+  PageResponse page = 2;
+}
+
+// VerifyAuditChainRequest selects the range to verify (default: everything).
+message VerifyAuditChainRequest {
+  uint64 from_seq = 1;
+  uint64 to_seq = 2;
+}
+
+// VerifyAuditChainResponse reports integrity.
+message VerifyAuditChainResponse {
+  bool intact = 1;
+  uint64 events_checked = 2;
+  // First sequence number whose hash does not verify (0 if intact).
+  uint64 first_broken_seq = 3;
+}

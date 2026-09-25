@@ -1,0 +1,103 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "central/agent/v1/network.proto";
+import "central/agent/v1/packages.proto";
+import "central/agent/v1/services.proto";
+import "central/agent/v1/system.proto";
+import "central/agent/v1/users.proto";
+import "google/protobuf/timestamp.proto";
+
+// MetricsSample is one point-in-time measurement. Rates are averaged over the interval since
+// the previous sample and computed by the agent from /proc counters.
+message MetricsSample {
+  google.protobuf.Timestamp time = 1;
+  // Overall CPU utilization 0..100 (all cores).
+  float cpu_percent = 2;
+  // Per-logical-CPU utilization 0..100, index = CPU number.
+  repeated float cpu_core_percent = 3;
+  // CPU time breakdown 0..100.
+  float cpu_iowait_percent = 4;
+  float cpu_steal_percent = 5;
+  float load1 = 6;
+  float load5 = 7;
+  float load15 = 8;
+  uint64 memory_total_bytes = 9;
+  // MemAvailable.
+  uint64 memory_available_bytes = 10;
+  // Total - Available.
+  uint64 memory_used_bytes = 11;
+  uint64 memory_cached_bytes = 12;
+  uint64 swap_total_bytes = 13;
+  uint64 swap_used_bytes = 14;
+  repeated FilesystemUsage filesystems = 15;
+  repeated DiskIO disks = 16;
+  repeated NetIO network = 17;
+  uint32 process_count = 18;
+  uint64 uptime_seconds = 19;
+  // Highest thermal zone temperature, if available.
+  optional float temperature_celsius = 20;
+}
+
+// FilesystemUsage is space usage of one mounted filesystem (pseudo filesystems excluded).
+message FilesystemUsage {
+  string mountpoint = 1;
+  string device = 2;
+  string fstype = 3;
+  uint64 total_bytes = 4;
+  uint64 used_bytes = 5;
+  uint64 inodes_total = 6;
+  uint64 inodes_used = 7;
+}
+
+// DiskIO is block device throughput (whole disks only, no partitions).
+message DiskIO {
+  string device = 1;
+  double read_bytes_per_second = 2;
+  double write_bytes_per_second = 3;
+  double reads_per_second = 4;
+  double writes_per_second = 5;
+  // Percentage of time the device was busy 0..100.
+  float utilization_percent = 6;
+}
+
+// NetIO is interface throughput (loopback excluded).
+message NetIO {
+  string interface = 1;
+  double rx_bytes_per_second = 2;
+  double tx_bytes_per_second = 3;
+  double rx_packets_per_second = 4;
+  double tx_packets_per_second = 5;
+  // Errors + drops since the previous sample.
+  uint64 rx_errors = 6;
+  uint64 tx_errors = 7;
+}
+
+// MetricsReport carries one or more samples. More than one sample is sent when the agent
+// flushes its offline buffer after reconnecting (oldest first).
+message MetricsReport {
+  repeated MetricsSample samples = 1;
+}
+
+// InventoryReport carries one category of inventory. The agent sends it on connect, whenever
+// the content hash changes, and on InventoryRefresh. Central ignores reports whose
+// content_hash equals the last stored one.
+message InventoryReport {
+  InventoryKind kind = 1;
+  // Lowercase hex SHA-256 of the deterministic serialization of the payload.
+  string content_hash = 2;
+  google.protobuf.Timestamp collected_at = 3;
+  oneof payload {
+    PackageInventory packages = 10;
+    UpdateInventory updates = 11;
+    ServiceInventory services = 12;
+    UserInventory users = 13;
+    NetworkState network = 14;
+    StorageState storage = 15;
+    FirewallState firewall = 16;
+  }
+}

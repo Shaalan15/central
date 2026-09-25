@@ -1,0 +1,70 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/agent/v1/telemetry.proto";
+import "google/protobuf/timestamp.proto";
+
+// MetricsService serves agent metrics history and live samples.
+service MetricsService {
+  // GetAgentMetrics returns a time series for one agent. Recent data (last hour) comes from
+  // memory at native resolution; older data from persisted one-minute and one-hour rollups.
+  rpc GetAgentMetrics(GetAgentMetricsRequest) returns (GetAgentMetricsResponse);
+  // WatchAgentMetrics streams live samples for one agent as they arrive.
+  rpc WatchAgentMetrics(WatchAgentMetricsRequest) returns (stream WatchAgentMetricsResponse);
+}
+
+// MetricsResolution selects the granularity of a series.
+enum MetricsResolution {
+  // Chosen automatically from the time range (<= ~500 points).
+  METRICS_RESOLUTION_UNSPECIFIED = 0;
+  // Native sample interval (only available for the last hour).
+  METRICS_RESOLUTION_RAW = 1;
+  METRICS_RESOLUTION_MINUTE = 2;
+  METRICS_RESOLUTION_HOUR = 3;
+}
+
+// GetAgentMetricsRequest selects a range.
+message GetAgentMetricsRequest {
+  string agent_id = 1;
+  google.protobuf.Timestamp start = 2;
+  // Default now.
+  google.protobuf.Timestamp end = 3;
+  MetricsResolution resolution = 4;
+}
+
+// MetricSeries is a columnar time series: every repeated field has the same length as
+// timestamps_ms. Values are averages over each bucket (maxima where named so).
+message MetricSeries {
+  MetricsResolution resolution = 1;
+  // Bucket start times, Unix milliseconds.
+  repeated int64 timestamps_ms = 2;
+  repeated float cpu_percent = 3;
+  repeated float cpu_percent_max = 4;
+  repeated float memory_used_percent = 5;
+  repeated float swap_used_percent = 6;
+  repeated float load1 = 7;
+  repeated float disk_used_percent_max = 8;
+  repeated double disk_read_bytes_per_second = 9;
+  repeated double disk_write_bytes_per_second = 10;
+  repeated double net_rx_bytes_per_second = 11;
+  repeated double net_tx_bytes_per_second = 12;
+}
+
+// GetAgentMetricsResponse returns the series.
+message GetAgentMetricsResponse {
+  MetricSeries series = 1;
+}
+
+// WatchAgentMetricsRequest identifies the agent.
+message WatchAgentMetricsRequest {
+  string agent_id = 1;
+}
+
+// WatchAgentMetricsResponse carries one live sample.
+message WatchAgentMetricsResponse {
+  central.agent.v1.MetricsSample sample = 1;
+}

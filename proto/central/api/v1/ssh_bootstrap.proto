@@ -1,0 +1,82 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// SshBootstrapService installs the agent on a server over SSH (Phase 1b).
+//
+// Central connects once with credentials the admin supplies, shows the server's host key
+// fingerprint for confirmation, installs the agent package and enrolls it with a single-use,
+// auto-approved enrollment token scoped to the host. Credentials are held in memory only for
+// the duration of the bootstrap and never stored or logged.
+service SshBootstrapService {
+  // BeginSshBootstrap connects and returns the host key for confirmation (nothing is executed
+  // yet). Permission agents.approve + tokens.manage, step-up.
+  rpc BeginSshBootstrap(BeginSshBootstrapRequest) returns (BeginSshBootstrapResponse);
+  // ConfirmSshBootstrap verifies the confirmed host key again and runs the installation,
+  // streaming progress.
+  rpc ConfirmSshBootstrap(ConfirmSshBootstrapRequest) returns (stream ConfirmSshBootstrapResponse);
+  // CancelSshBootstrap discards a pending bootstrap and its credentials.
+  rpc CancelSshBootstrap(CancelSshBootstrapRequest) returns (CancelSshBootstrapResponse);
+}
+
+// BeginSshBootstrapRequest carries connection details.
+message BeginSshBootstrapRequest {
+  string host = 1;
+  // Default 22.
+  uint32 port = 2;
+  string username = 3;
+  oneof auth {
+    string password = 4;
+    // OpenSSH or PEM private key.
+    string private_key = 5;
+  }
+  // Passphrase for an encrypted private key.
+  string private_key_passphrase = 6;
+  // Password for sudo if the user is not root (may equal the SSH password).
+  string sudo_password = 7;
+  // Enrollment defaults for the new agent.
+  repeated string tags = 8;
+  string group_id = 9;
+}
+
+// BeginSshBootstrapResponse carries the host key to confirm.
+message BeginSshBootstrapResponse {
+  string bootstrap_id = 1;
+  // e.g. "ssh-ed25519".
+  string host_key_type = 2;
+  // "SHA256:..." as printed by ssh-keygen -l.
+  string host_key_fingerprint = 3;
+  // Remote OS detected over SSH (from /etc/os-release).
+  string remote_os = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+// ConfirmSshBootstrapRequest confirms the host key.
+message ConfirmSshBootstrapRequest {
+  string bootstrap_id = 1;
+  // Must equal the fingerprint returned by BeginSshBootstrap.
+  string host_key_fingerprint = 2;
+}
+
+// ConfirmSshBootstrapResponse is one progress line.
+message ConfirmSshBootstrapResponse {
+  string message = 1;
+  // Finished (successfully when error is empty).
+  bool done = 2;
+  string error = 3;
+  // Agent ID once enrolled.
+  string agent_id = 4;
+}
+
+// CancelSshBootstrapRequest identifies a pending bootstrap.
+message CancelSshBootstrapRequest {
+  string bootstrap_id = 1;
+}
+
+// CancelSshBootstrapResponse is empty.
+message CancelSshBootstrapResponse {}

@@ -1,0 +1,65 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// JournalEntry is one systemd journal record.
+message JournalEntry {
+  google.protobuf.Timestamp time = 1;
+  // syslog priority 0 (emerg) .. 7 (debug).
+  uint32 priority = 2;
+  // _SYSTEMD_UNIT, if any.
+  string unit = 3;
+  // SYSLOG_IDENTIFIER or _COMM.
+  string identifier = 4;
+  uint32 pid = 5;
+  // MESSAGE. Truncated to 16 KiB.
+  string message = 6;
+  // __CURSOR, usable to resume.
+  string cursor = 7;
+  // _HOSTNAME.
+  string hostname = 8;
+}
+
+// JournalFilter selects journal entries.
+message JournalFilter {
+  // Limit to these units (`-u`). Empty means all.
+  repeated string units = 1;
+  // Maximum priority to include (0..7). 0 is treated as 7 (all) when unset.
+  uint32 max_priority = 2;
+  google.protobuf.Timestamp since = 3;
+  google.protobuf.Timestamp until = 4;
+  // Case-insensitive substring match on MESSAGE (`--grep` with fixed-string semantics).
+  string contains = 5;
+  // Resume after this cursor.
+  string after_cursor = 6;
+  // Only entries from the current boot.
+  bool current_boot_only = 7;
+}
+
+// JournalQuery reads journal entries. Capability: LOGS_READ.
+message JournalQuery {
+  JournalFilter filter = 1;
+  // Maximum entries (default 500, max 5000). Newest entries are returned when `reverse` is true.
+  uint32 limit = 2;
+  bool reverse = 3;
+}
+
+// JournalQueryResult is the result of JournalQuery.
+message JournalQueryResult {
+  repeated JournalEntry entries = 1;
+  // More entries matched than were returned.
+  bool truncated = 2;
+}
+
+// JournalFollow streams new journal entries over an attached session until cancelled.
+// Capability: LOGS_READ.
+message JournalFollow {
+  JournalFilter filter = 1;
+  // Number of recent entries to send first (like `journalctl -n`), max 1000.
+  uint32 backlog = 2;
+}

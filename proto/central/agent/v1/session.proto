@@ -1,0 +1,61 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "central/agent/v1/command.proto";
+import "central/agent/v1/logs.proto";
+
+// SessionFrame is exchanged on AgentService.AttachSession. One stream carries exactly one
+// session (terminal, journal follow, file download or file upload).
+//
+// The agent sends `attach` first. Central validates the binding against the pending session
+// created when the authorizing command was issued, then both sides exchange frames. Either
+// side ends the session with `close`.
+message SessionFrame {
+  oneof frame {
+    SessionAttach attach = 1;
+    // Raw bytes: PTY output (agent -> Central), keystrokes (Central -> agent), or file chunks.
+    // At most 32 KiB per frame.
+    bytes data = 2;
+    SessionResize resize = 3;
+    SessionClose close = 4;
+    // Journal entries for journal-follow sessions (agent -> Central).
+    JournalEntries journal = 5;
+    // Flow control: receiver has consumed this many bytes since the last ack. Senders keep at
+    // most 1 MiB unacknowledged.
+    uint64 ack_bytes = 6;
+  }
+}
+
+// SessionAttach binds a new stream to a session authorized by a signed command.
+message SessionAttach {
+  string session_id = 1;
+  bytes attach_token = 2;
+  // The command that authorized this session.
+  string command_id = 3;
+}
+
+// SessionResize changes the PTY size (Central -> agent).
+message SessionResize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+// SessionClose ends a session.
+message SessionClose {
+  // Process exit code for terminals, 0 otherwise.
+  int32 exit_code = 1;
+  CommandError error = 2;
+  // For file downloads: lowercase hex SHA-256 of everything sent.
+  string sha256 = 3;
+  // Total payload bytes sent by the closing side.
+  uint64 total_bytes = 4;
+}
+
+// JournalEntries is a batch of journal records.
+message JournalEntries {
+  repeated JournalEntry entries = 1;
+}

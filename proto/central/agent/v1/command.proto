@@ -1,0 +1,248 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "central/agent/v1/files.proto";
+import "central/agent/v1/logs.proto";
+import "central/agent/v1/network.proto";
+import "central/agent/v1/packages.proto";
+import "central/agent/v1/processes.proto";
+import "central/agent/v1/services.proto";
+import "central/agent/v1/system.proto";
+import "central/agent/v1/users.proto";
+import "google/protobuf/timestamp.proto";
+
+// SignedCommand is how every command travels from Central to an agent.
+//
+// Verification (performed by the agent's privileged helper, not only the network process):
+//  1. `key_id` names a key from AgentCredentials.command_signing_keys that is not past
+//     `not_after`.
+//  2. Ed25519.Verify(public_key, "central-command-v1" || 0x00 || command, signature) succeeds.
+//     The signature covers the exact serialized bytes, so no canonicalization is needed.
+//  3. The decoded Command's agent_id and org_id equal the agent's own identity.
+//  4. issued_at <= now + 5m (clock skew) and now <= expires_at, and
+//     expires_at - issued_at <= 24h.
+//  5. command_id has not been seen before (replay cache retained until expires_at).
+//  6. The operation's capability is allowed by the owner policy and the agent is not paused.
+// Any failure is reported as a CommandUpdate with state REJECTED and the matching error code.
+message SignedCommand {
+  // Serialized central.agent.v1.Command.
+  bytes command = 1;
+  // Raw 64-byte Ed25519 signature.
+  bytes signature = 2;
+  string key_id = 3;
+}
+
+// Command is one operation Central wants an agent to perform.
+message Command {
+  // UUIDv7 (time-ordered), unique per command.
+  string command_id = 1;
+  string agent_id = 2;
+  string org_id = 3;
+  google.protobuf.Timestamp issued_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  // Who asked for this, recorded in the agent's local audit log.
+  Issuer issuer = 6;
+  // Fleet job this command belongs to, if any.
+  string job_id = 7;
+  Operation operation = 8;
+  // Set for operations that attach a session (terminal, journal follow, file transfer): the
+  // agent opens AgentService.AttachSession and presents these values in SessionAttach.
+  SessionBinding session = 9;
+}
+
+// Issuer identifies the human or automation behind a command.
+message Issuer {
+  // Central user ID or API key ID.
+  string principal_id = 1;
+  // Display name or email, for local audit logs.
+  string display = 2;
+  // Source IP of the request to Central.
+  string source_ip = 3;
+}
+
+// SessionBinding ties an attached session to the command that authorized it.
+message SessionBinding {
+  string session_id = 1;
+  // 32 random bytes; the agent echoes them in SessionAttach.
+  bytes attach_token = 2;
+}
+
+// Operation is the typed payload of a command. Field numbers are grouped by domain.
+message Operation {
+  oneof kind {
+    // Packages (10-29).
+    PackagesRefresh packages_refresh = 10;
+    PackagesUpgrade packages_upgrade = 11;
+    PackagesInstall packages_install = 12;
+    PackagesRemove packages_remove = 13;
+    PackagesHold packages_hold = 14;
+    PackagesAutoremove packages_autoremove = 15;
+    PackagesList packages_list = 16;
+
+    // Services (30-39).
+    ServiceList service_list = 30;
+    ServiceAction service_action = 31;
+    ServiceStatus service_status = 32;
+
+    // Logs (40-49).
+    JournalQuery journal_query = 40;
+    JournalFollow journal_follow = 41;
+
+    // Processes (50-59).
+    ProcessList process_list = 50;
+    ProcessSignal process_signal = 51;
+
+    // System (60-69).
+    PowerAction power = 60;
+    Exec exec = 61;
+    TerminalOpen terminal_open = 62;
+    StorageGet storage_get = 63;
+
+    // Network and firewall (70-79).
+    NetworkGet network_get = 70;
+    NetworkApply network_apply = 71;
+    NetworkConfirm network_confirm = 72;
+    FirewallGet firewall_get = 73;
+    FirewallApply firewall_apply = 74;
+
+    // Files (80-99).
+    FileList file_list = 80;
+    FileStat file_stat = 81;
+    FileRead file_read = 82;
+    FileWrite file_write = 83;
+    FileMkdir file_mkdir = 84;
+    FileDelete file_delete = 85;
+    FileRename file_rename = 86;
+    FileChmod file_chmod = 87;
+    FileChown file_chown = 88;
+    FileAclGet file_acl_get = 89;
+    FileDownload file_download = 90;
+    FileUpload file_upload = 91;
+
+    // Users and groups (100-119).
+    UserList user_list = 100;
+    UserCreate user_create = 101;
+    UserModify user_modify = 102;
+    UserDelete user_delete = 103;
+    UserSetPassword user_set_password = 104;
+    GroupCreate group_create = 105;
+    GroupDelete group_delete = 106;
+    GroupSetMembers group_set_members = 107;
+    AuthorizedKeysGet authorized_keys_get = 108;
+    AuthorizedKeysSet authorized_keys_set = 109;
+
+    // Agent (130-139).
+    AgentUpgrade agent_upgrade = 130;
+    AgentUninstall agent_uninstall = 131;
+    InventoryRefresh inventory_refresh = 132;
+  }
+}
+
+// CommandState is the lifecycle of a command on the agent.
+enum CommandState {
+  COMMAND_STATE_UNSPECIFIED = 0;
+  // Verified and queued.
+  COMMAND_STATE_ACCEPTED = 1;
+  COMMAND_STATE_RUNNING = 2;
+  COMMAND_STATE_SUCCEEDED = 3;
+  // Executed but failed (non-zero exit, apt error, ...).
+  COMMAND_STATE_FAILED = 4;
+  // Refused before execution (bad signature, expired, replayed, policy denied, paused, ...).
+  COMMAND_STATE_REJECTED = 5;
+  COMMAND_STATE_CANCELLED = 6;
+  // Deadline passed before or during execution.
+  COMMAND_STATE_TIMED_OUT = 7;
+}
+
+// ErrorCode classifies command failures.
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_ARGUMENT = 1;
+  ERROR_CODE_NOT_FOUND = 2;
+  // Denied by the owner policy.
+  ERROR_CODE_POLICY_DENIED = 3;
+  // Remote operations are paused by the owner.
+  ERROR_CODE_PAUSED = 4;
+  ERROR_CODE_BAD_SIGNATURE = 5;
+  ERROR_CODE_EXPIRED = 6;
+  ERROR_CODE_REPLAYED = 7;
+  // Command addressed to a different agent or org.
+  ERROR_CODE_WRONG_TARGET = 8;
+  // Resource busy or precondition failed (dpkg lock held, expected_sha256 mismatch, ...).
+  ERROR_CODE_CONFLICT = 9;
+  ERROR_CODE_UNSUPPORTED = 10;
+  ERROR_CODE_TIMEOUT = 11;
+  // Too many concurrent commands or output limit exceeded.
+  ERROR_CODE_RESOURCE_EXHAUSTED = 12;
+  ERROR_CODE_INTERNAL = 13;
+  // The underlying tool failed (e.g. apt-get exited non-zero); see message/output.
+  ERROR_CODE_EXECUTION_FAILED = 14;
+}
+
+// CommandError describes why a command failed or was rejected.
+message CommandError {
+  ErrorCode code = 1;
+  // Human-readable message. Must not contain secrets (passwords, keys).
+  string message = 2;
+}
+
+// OutputChunk is a piece of stdout/stderr from a running command.
+message OutputChunk {
+  // Stream identifies stdout vs stderr.
+  enum Stream {
+    STREAM_UNSPECIFIED = 0;
+    STREAM_STDOUT = 1;
+    STREAM_STDERR = 2;
+  }
+  Stream stream = 1;
+  // At most 64 KiB per chunk.
+  bytes data = 2;
+  // Monotonic per-command sequence number starting at 0.
+  uint64 seq = 3;
+}
+
+// CommandUpdate reports progress and the final result of a command. The agent sends ACCEPTED
+// (or REJECTED) immediately, optional RUNNING updates with output, and exactly one terminal
+// update (SUCCEEDED, FAILED, REJECTED, CANCELLED or TIMED_OUT).
+message CommandUpdate {
+  string command_id = 1;
+  CommandState state = 2;
+  // Progress 0..100 when known, -1 when indeterminate.
+  int32 progress_percent = 3;
+  // Short status line, e.g. "Unpacking nginx (1.24.0-2ubuntu7.1)".
+  string status = 4;
+  repeated OutputChunk output = 5;
+  // Output exceeded the configured limit; later output was dropped.
+  bool output_truncated = 6;
+  CommandError error = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp finished_at = 9;
+  // Typed result, set on the terminal update for operations that return data.
+  CommandResult result = 10;
+}
+
+// CommandResult carries the typed result of an operation.
+message CommandResult {
+  oneof kind {
+    PackagesListResult packages_list = 16;
+    PackagesChangeResult packages_change = 17;
+    ServiceListResult service_list = 30;
+    ServiceStatusResult service_status = 32;
+    JournalQueryResult journal_query = 40;
+    ProcessListResult process_list = 50;
+    ExecResult exec = 61;
+    StorageState storage = 63;
+    NetworkState network = 70;
+    FirewallState firewall = 73;
+    FileListResult file_list = 80;
+    FileStatResult file_stat = 81;
+    FileReadResult file_read = 82;
+    FileAclGetResult file_acl = 89;
+    UserListResult user_list = 100;
+    AuthorizedKeysResult authorized_keys = 108;
+  }
+}

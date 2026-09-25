@@ -1,0 +1,314 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/agent/v1/host.proto";
+import "central/agent/v1/policy.proto";
+import "central/agent/v1/system.proto";
+import "central/agent/v1/telemetry.proto";
+import "central/api/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// FleetService lists and manages enrolled agents. Results are served from Central's in-memory
+// fleet index, so listing and filtering thousands of agents is fast.
+service FleetService {
+  // ListAgents lists agents with filtering, sorting and paging.
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  // GetAgent returns one agent in detail.
+  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+  // UpdateAgent changes an agent's name, tags or group (permission agents.manage).
+  rpc UpdateAgent(UpdateAgentRequest) returns (UpdateAgentResponse);
+  // RevokeAgent revokes an agent's identity and disconnects it immediately (step-up).
+  rpc RevokeAgent(RevokeAgentRequest) returns (RevokeAgentResponse);
+  // GetFleetSummary returns fleet-wide counters for the dashboard.
+  rpc GetFleetSummary(GetFleetSummaryRequest) returns (GetFleetSummaryResponse);
+  // WatchFleet streams a snapshot followed by incremental changes (coalesced, at most one
+  // update per agent per second).
+  rpc WatchFleet(WatchFleetRequest) returns (stream WatchFleetResponse);
+  // GetAgentInventory returns the latest inventory of one kind for an agent.
+  rpc GetAgentInventory(GetAgentInventoryRequest) returns (GetAgentInventoryResponse);
+
+  // ListGroups lists agent groups.
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+  // CreateGroup creates an agent group.
+  rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
+  // UpdateGroup changes an agent group.
+  rpc UpdateGroup(UpdateGroupRequest) returns (UpdateGroupResponse);
+  // DeleteGroup deletes an empty agent group.
+  rpc DeleteGroup(DeleteGroupRequest) returns (DeleteGroupResponse);
+}
+
+// ConnectionState is whether an agent currently holds a control stream.
+enum ConnectionState {
+  CONNECTION_STATE_UNSPECIFIED = 0;
+  CONNECTION_STATE_ONLINE = 1;
+  CONNECTION_STATE_OFFLINE = 2;
+}
+
+// AgentLifecycle is the administrative state of an agent identity.
+enum AgentLifecycle {
+  AGENT_LIFECYCLE_UNSPECIFIED = 0;
+  AGENT_LIFECYCLE_ACTIVE = 1;
+  AGENT_LIFECYCLE_REVOKED = 2;
+}
+
+// AgentSummary is the compact view used in lists and live updates.
+message AgentSummary {
+  string id = 1;
+  // Display name (defaults to hostname).
+  string name = 2;
+  string hostname = 3;
+  ConnectionState connection = 4;
+  AgentLifecycle lifecycle = 5;
+  repeated string tags = 6;
+  string group_id = 7;
+  // e.g. "Ubuntu 24.04.1 LTS".
+  string os_pretty_name = 8;
+  string os_id = 9;
+  string os_version = 10;
+  string arch = 11;
+  string agent_version = 12;
+  // First non-loopback address, for display.
+  string primary_ip = 13;
+  google.protobuf.Timestamp last_seen_at = 14;
+  google.protobuf.Timestamp connected_since = 15;
+  // Latest metrics (0 when unknown).
+  float cpu_percent = 16;
+  float memory_used_percent = 17;
+  // Highest usage across filesystems.
+  float disk_used_percent_max = 18;
+  float load1 = 19;
+  uint64 uptime_seconds = 20;
+  uint32 updates_available = 21;
+  uint32 security_updates = 22;
+  bool reboot_required = 23;
+  central.agent.v1.PolicyProfile policy_profile = 24;
+  bool policy_paused = 25;
+  // Number of logical CPUs (to interpret load).
+  uint32 cpu_threads = 26;
+}
+
+// Agent is the detailed view.
+message Agent {
+  AgentSummary summary = 1;
+  central.agent.v1.HostFacts facts = 2;
+  central.agent.v1.EffectivePolicy policy = 3;
+  // Optional agent features, e.g. "sessions.v1".
+  repeated string features = 4;
+  string certificate_serial = 5;
+  google.protobuf.Timestamp certificate_expires_at = 6;
+  google.protobuf.Timestamp enrolled_at = 7;
+  PrincipalRef approved_by = 8;
+  string enrollment_token_id = 9;
+  // Source address of the current/last connection as seen by Central.
+  string remote_ip = 10;
+  // Agent clock minus Central clock at the last Hello.
+  google.protobuf.Duration clock_skew = 11;
+  google.protobuf.Timestamp revoked_at = 12;
+  string revoked_reason = 13;
+  // Latest full metrics sample, if online.
+  central.agent.v1.MetricsSample latest_metrics = 14;
+}
+
+// AgentSortField selects the ListAgents sort key.
+enum AgentSortField {
+  AGENT_SORT_FIELD_UNSPECIFIED = 0;
+  AGENT_SORT_FIELD_NAME = 1;
+  AGENT_SORT_FIELD_LAST_SEEN = 2;
+  AGENT_SORT_FIELD_CPU = 3;
+  AGENT_SORT_FIELD_MEMORY = 4;
+  AGENT_SORT_FIELD_DISK = 5;
+  AGENT_SORT_FIELD_UPDATES = 6;
+  AGENT_SORT_FIELD_OS = 7;
+}
+
+// AgentFilter selects agents.
+message AgentFilter {
+  // Case-insensitive match on name, hostname, IP or tag.
+  string query = 1;
+  repeated ConnectionState connection = 2;
+  // Agents carrying all of these tags.
+  repeated string tags = 3;
+  repeated string group_ids = 4;
+  // Only agents with pending updates.
+  bool has_updates = 5;
+  bool has_security_updates = 6;
+  bool reboot_required = 7;
+  // os-release ID, e.g. "ubuntu".
+  repeated string os_ids = 8;
+  // Include revoked agents (default: active only).
+  bool include_revoked = 9;
+}
+
+// ListAgentsRequest filters, sorts and pages agents.
+message ListAgentsRequest {
+  AgentFilter filter = 1;
+  AgentSortField sort_by = 2;
+  bool descending = 3;
+  PageRequest page = 4;
+}
+
+// ListAgentsResponse is a page of agents.
+message ListAgentsResponse {
+  repeated AgentSummary agents = 1;
+  PageResponse page = 2;
+}
+
+// GetAgentRequest identifies an agent.
+message GetAgentRequest {
+  string agent_id = 1;
+}
+
+// GetAgentResponse returns the agent.
+message GetAgentResponse {
+  Agent agent = 1;
+}
+
+// UpdateAgentRequest changes mutable fields. Unset optional fields are left alone.
+message UpdateAgentRequest {
+  string agent_id = 1;
+  optional string name = 2;
+  // Replaces all tags when set.
+  optional TagList tags = 3;
+  optional string group_id = 4;
+}
+
+// TagList wraps tags so "unset" differs from "empty".
+message TagList {
+  repeated string tags = 1;
+}
+
+// UpdateAgentResponse returns the updated agent.
+message UpdateAgentResponse {
+  AgentSummary agent = 1;
+}
+
+// RevokeAgentRequest revokes an agent.
+message RevokeAgentRequest {
+  string agent_id = 1;
+  string reason = 2;
+  // Ask the agent to uninstall itself first (only if its policy allows remote uninstall).
+  bool uninstall = 3;
+}
+
+// RevokeAgentResponse returns the revoked agent.
+message RevokeAgentResponse {
+  AgentSummary agent = 1;
+}
+
+// FleetSummary contains fleet-wide counters.
+message FleetSummary {
+  uint32 total = 1;
+  uint32 online = 2;
+  uint32 offline = 3;
+  uint32 pending_enrollments = 4;
+  // Agents with at least one pending update.
+  uint32 agents_with_updates = 5;
+  uint32 agents_with_security_updates = 6;
+  uint32 agents_reboot_required = 7;
+  uint32 total_updates = 8;
+  uint32 total_security_updates = 9;
+  // Agents above 90% CPU, memory or disk.
+  uint32 agents_under_pressure = 10;
+}
+
+// GetFleetSummaryRequest is empty.
+message GetFleetSummaryRequest {}
+
+// GetFleetSummaryResponse returns the summary.
+message GetFleetSummaryResponse {
+  FleetSummary summary = 1;
+}
+
+// WatchFleetRequest optionally restricts the watched agents.
+message WatchFleetRequest {
+  AgentFilter filter = 1;
+}
+
+// WatchFleetResponse is one event in a fleet watch stream.
+message WatchFleetResponse {
+  oneof event {
+    // Full list of matching agents (first message, and after resync).
+    FleetSnapshot snapshot = 1;
+    // An agent was added or changed.
+    AgentSummary upsert = 2;
+    // An agent no longer matches or was removed (agent ID).
+    string removed = 3;
+    // Updated fleet counters.
+    FleetSummary summary = 4;
+  }
+}
+
+// FleetSnapshot is the initial state of a fleet watch.
+message FleetSnapshot {
+  repeated AgentSummary agents = 1;
+  FleetSummary summary = 2;
+}
+
+// GetAgentInventoryRequest selects one inventory kind.
+message GetAgentInventoryRequest {
+  string agent_id = 1;
+  central.agent.v1.InventoryKind kind = 2;
+}
+
+// GetAgentInventoryResponse returns the stored report.
+message GetAgentInventoryResponse {
+  // Empty payload if the agent has not reported this kind yet.
+  central.agent.v1.InventoryReport inventory = 1;
+}
+
+// AgentGroup organizes agents (for scoping permissions, jobs and settings).
+message AgentGroup {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  // Overrides the organization's metrics interval for agents in this group.
+  google.protobuf.Duration metrics_interval = 4;
+  uint32 agent_count = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// ListGroupsRequest is empty.
+message ListGroupsRequest {}
+
+// ListGroupsResponse lists groups.
+message ListGroupsResponse {
+  repeated AgentGroup groups = 1;
+}
+
+// CreateGroupRequest defines a group.
+message CreateGroupRequest {
+  string name = 1;
+  string description = 2;
+  google.protobuf.Duration metrics_interval = 3;
+}
+
+// CreateGroupResponse returns the group.
+message CreateGroupResponse {
+  AgentGroup group = 1;
+}
+
+// UpdateGroupRequest changes a group.
+message UpdateGroupRequest {
+  string group_id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Duration metrics_interval = 4;
+}
+
+// UpdateGroupResponse returns the group.
+message UpdateGroupResponse {
+  AgentGroup group = 1;
+}
+
+// DeleteGroupRequest identifies a group.
+message DeleteGroupRequest {
+  string group_id = 1;
+}
+
+// DeleteGroupResponse is empty.
+message DeleteGroupResponse {}

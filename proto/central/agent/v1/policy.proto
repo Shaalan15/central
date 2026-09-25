@@ -1,0 +1,119 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// The owner policy is the root-owned file /etc/central-agent/policy.toml on the managed host.
+// Central can never write it; the agent only reports the effective result so the UI can show
+// what is allowed. The authoritative enforcement happens in the agent's privileged helper.
+// Full specification: docs/agent/local-policy.md.
+
+// PolicyProfile is a named baseline of capabilities.
+enum PolicyProfile {
+  POLICY_PROFILE_UNSPECIFIED = 0;
+  // Read-only: telemetry, inventory, logs, processes, services, network and storage state.
+  POLICY_PROFILE_OBSERVE = 1;
+  // observe + package upgrades, service control, process signals, reboot, agent upgrade.
+  POLICY_PROFILE_OPERATE = 2;
+  // operate + package install/remove, user management (no privileged groups), file access
+  // within allow lists, network/firewall changes with rollback. Install default.
+  POLICY_PROFILE_ADMINISTER = 3;
+  // Everything, including terminal and arbitrary exec (root-equivalent; the policy becomes
+  // advisory because root can rewrite it).
+  POLICY_PROFILE_FULL = 4;
+}
+
+// Capability is a class of operations. Every Operation maps to exactly one capability.
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_TELEMETRY = 1;
+  CAPABILITY_PACKAGES_READ = 2;
+  CAPABILITY_PACKAGES_UPGRADE = 3;
+  CAPABILITY_PACKAGES_INSTALL = 4;
+  CAPABILITY_PACKAGES_REMOVE = 5;
+  CAPABILITY_SERVICES_READ = 6;
+  CAPABILITY_SERVICES_MANAGE = 7;
+  CAPABILITY_LOGS_READ = 8;
+  CAPABILITY_PROCESSES_READ = 9;
+  CAPABILITY_PROCESSES_SIGNAL = 10;
+  CAPABILITY_POWER = 11;
+  CAPABILITY_EXEC = 12;
+  CAPABILITY_TERMINAL = 13;
+  CAPABILITY_NETWORK_READ = 14;
+  CAPABILITY_NETWORK_MANAGE = 15;
+  CAPABILITY_FIREWALL_MANAGE = 16;
+  CAPABILITY_FILES_READ = 17;
+  CAPABILITY_FILES_WRITE = 18;
+  CAPABILITY_FILES_PERMISSIONS = 19;
+  CAPABILITY_USERS_READ = 20;
+  CAPABILITY_USERS_MANAGE = 21;
+  CAPABILITY_STORAGE_READ = 22;
+  CAPABILITY_AGENT_UPGRADE = 23;
+  CAPABILITY_AGENT_UNINSTALL = 24;
+}
+
+// EffectivePolicy is the owner policy as currently enforced by the agent's helper.
+message EffectivePolicy {
+  // Policy file schema version.
+  uint32 version = 1;
+  PolicyProfile profile = 2;
+  // Lowercase hex SHA-256 of the policy file bytes (empty if no file: built-in default).
+  string digest = 3;
+  // Capabilities allowed after applying the profile and overrides.
+  repeated Capability allowed = 4;
+  // All remote operations are suspended by the owner (`central-agent pause`); telemetry still
+  // flows if `telemetry_while_paused` is set.
+  bool paused = 5;
+  FilesPolicy files = 6;
+  PackagesPolicy packages = 7;
+  UsersPolicy users = 8;
+  ServicesPolicy services = 9;
+  RunAsPolicy run_as = 10;
+  // When the helper loaded this policy.
+  google.protobuf.Timestamp loaded_at = 11;
+  // Warnings produced while loading (unknown keys, ignored values). Never secrets.
+  repeated string warnings = 12;
+}
+
+// FilesPolicy restricts file operations. Globs use doublestar syntax ("/etc/**").
+message FilesPolicy {
+  repeated string read_allow = 1;
+  repeated string write_allow = 2;
+  // Deny always wins over allow. Includes the built-in escalation deny list.
+  repeated string deny = 3;
+  // Permit setting setuid/setgid bits.
+  bool allow_setuid = 4;
+}
+
+// PackagesPolicy restricts package operations. Globs match package names.
+message PackagesPolicy {
+  repeated string install_allow = 1;
+  repeated string deny = 2;
+}
+
+// UsersPolicy restricts Linux user management.
+message UsersPolicy {
+  // Users that can never be modified (always includes root and the agent user).
+  repeated string protected_users = 1;
+  // Allow adding users to privileged groups (sudo, adm, root, wheel, disk, shadow, docker, lxd).
+  bool allow_privileged_groups = 2;
+}
+
+// ServicesPolicy restricts service control.
+message ServicesPolicy {
+  // Units that cannot be stopped, disabled or masked (globs). Always includes the agent's units.
+  repeated string protected_units = 1;
+}
+
+// RunAsPolicy restricts the Linux users that terminals and exec may run as.
+message RunAsPolicy {
+  repeated string allowed_users = 1;
+  // Default user when a request does not specify one.
+  string default_user = 2;
+  // root is in allowed_users.
+  bool allow_root = 3;
+}

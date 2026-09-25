@@ -1,0 +1,154 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Package is an installed Debian package (from dpkg status).
+message Package {
+  string name = 1;
+  string version = 2;
+  // Debian architecture, e.g. "amd64", "all".
+  string architecture = 3;
+  // Short description (first line).
+  string summary = 4;
+  // Installed size in bytes.
+  uint64 installed_size_bytes = 5;
+  // Package is on hold (`apt-mark hold`).
+  bool held = 6;
+  // Installed automatically as a dependency (`apt-mark showauto`).
+  bool auto_installed = 7;
+  // Debian section, e.g. "net", "admin".
+  string section = 8;
+}
+
+// PendingUpdate is an installed package with a newer candidate version available.
+message PendingUpdate {
+  string name = 1;
+  string current_version = 2;
+  string candidate_version = 3;
+  string architecture = 4;
+  // Archive/suite the candidate comes from, e.g. "noble-security", "bookworm-updates".
+  string archive = 5;
+  // Origin, e.g. "Ubuntu", "Debian", "Docker".
+  string origin = 6;
+  // Candidate comes from a security archive (`*-security`, `Debian-Security`).
+  bool security = 7;
+  // Ubuntu phased update not yet available to this machine.
+  bool phased = 8;
+  // Upgrading requires installing or removing other packages (dist-upgrade only).
+  bool requires_dist_upgrade = 9;
+}
+
+// PackageInventory is the full list of installed packages.
+message PackageInventory {
+  repeated Package packages = 1;
+}
+
+// UpdateInventory summarizes pending updates and reboot state.
+message UpdateInventory {
+  repeated PendingUpdate updates = 1;
+  // /var/run/reboot-required exists.
+  bool reboot_required = 2;
+  // Contents of /var/run/reboot-required.pkgs.
+  repeated string reboot_required_packages = 3;
+  // Last successful `apt-get update` (mtime of the newest list file).
+  google.protobuf.Timestamp lists_updated_at = 4;
+  // unattended-upgrades is installed and enabled.
+  bool unattended_upgrades_enabled = 5;
+}
+
+// PackagesRefresh runs `apt-get update`. Capability: PACKAGES_UPGRADE.
+message PackagesRefresh {}
+
+// PackagesUpgrade upgrades installed packages. Capability: PACKAGES_UPGRADE.
+//
+// Runs non-interactively (DEBIAN_FRONTEND=noninteractive, --force-confdef, --force-confold)
+// and waits for the dpkg lock (up to the command's deadline) rather than failing immediately.
+message PackagesUpgrade {
+  // Packages to upgrade. Empty means all upgradable packages.
+  repeated string names = 1;
+  // Only upgrade packages whose candidate comes from a security archive.
+  bool security_only = 2;
+  // Allow installing/removing packages to satisfy upgrades (`apt-get dist-upgrade`).
+  bool dist_upgrade = 3;
+  // Run `apt-get update` first.
+  bool refresh = 4;
+}
+
+// PackagesInstall installs packages from the configured repositories.
+// Capability: PACKAGES_INSTALL. The owner policy may restrict which names are allowed.
+message PackagesInstall {
+  // Package names, optionally pinned as "name=version".
+  repeated string names = 1;
+  // Pass --no-install-recommends.
+  bool no_install_recommends = 2;
+  // Run `apt-get update` first.
+  bool refresh = 3;
+}
+
+// PackagesRemove removes packages. Capability: PACKAGES_REMOVE.
+message PackagesRemove {
+  repeated string names = 1;
+  // Also remove configuration files (`apt-get purge`).
+  bool purge = 2;
+}
+
+// PackagesHold holds or unholds packages (`apt-mark hold|unhold`). Capability: PACKAGES_UPGRADE.
+message PackagesHold {
+  repeated string names = 1;
+  // true = hold, false = unhold.
+  bool hold = 2;
+}
+
+// PackagesAutoremove removes automatically installed packages that are no longer needed.
+// Capability: PACKAGES_REMOVE.
+message PackagesAutoremove {
+  bool purge = 1;
+}
+
+// PackagesList queries installed packages. Capability: PACKAGES_READ.
+message PackagesList {
+  // Case-insensitive substring match on name or summary. Empty returns all.
+  string query = 1;
+  // Maximum number of results (default 500, max 5000).
+  uint32 limit = 2;
+  // Number of matching results to skip.
+  uint32 offset = 3;
+}
+
+// PackagesListResult is the result of PackagesList.
+message PackagesListResult {
+  repeated Package packages = 1;
+  // Total number of matches before limit/offset.
+  uint32 total = 2;
+}
+
+// PackagesChangeResult summarizes what an apt transaction changed.
+message PackagesChangeResult {
+  repeated PackageChange changes = 1;
+  // A reboot is required after this transaction.
+  bool reboot_required = 2;
+}
+
+// PackageChange is one package affected by an apt transaction.
+message PackageChange {
+  string name = 1;
+  string old_version = 2;
+  string new_version = 3;
+  // Action is what happened to the package.
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_INSTALLED = 1;
+    ACTION_UPGRADED = 2;
+    ACTION_REMOVED = 3;
+    ACTION_PURGED = 4;
+    ACTION_DOWNGRADED = 5;
+    ACTION_HELD = 6;
+    ACTION_UNHELD = 7;
+  }
+  Action action = 4;
+}
