@@ -40,7 +40,11 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logOut := io.Discard
+	if os.Getenv("CENTRAL_TEST_LOG") != "" {
+		logOut = os.Stderr
+	}
+	log := slog.New(slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	a, err := New(context.Background(), &cfg, log, Build{Version: "test"})
 	if err != nil {
 		t.Fatal(err)

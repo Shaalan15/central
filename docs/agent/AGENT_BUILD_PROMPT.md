@@ -331,6 +331,12 @@ then:
 
 Flow control: never keep more than 1 MiB unacknowledged; send `ack_bytes` as you consume.
 
+Ending a session: send `close`, then **half-close** the request stream (end of stream, not a
+reset) and keep reading until Central ends the response. Resetting the HTTP/2 stream (RST_STREAM)
+right after sending `close` can discard the frame in transit, and Central would then report the
+session as ended without an exit status. The same applies to the control stream: send final
+`CommandUpdate`s before closing, and close gracefully.
+
 ---
 
 ## 10. Packaging and installation

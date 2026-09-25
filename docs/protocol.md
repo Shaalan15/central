@@ -115,6 +115,34 @@ Browser            Central                                   Agent (helper spawn
   |<========== PTY bytes (recorded) ===========================>|
 ```
 
+- **Tickets.** A ticket is single-use and valid for 30 s. It works only together with the
+  browser session it was issued to, and only from an allowed origin. API keys cannot open
+  terminals.
+- **Session binding.** The session is bound to the signed command. Central accepts
+  `SessionAttach` only from the target agent, only once, within 60 s, and only with the matching
+  command ID and attach token.
+- **Recording.** When the organization records sessions (the default), only output is
+  recorded (asciicast v2, gzip chunks in storage), so passwords typed at prompts never are. If
+  recording cannot start, the session is refused rather than run unrecorded. Recordings are
+  readable with `audit.view`, and every replay is audited.
+- **Journal follow.** It uses the same attach mechanism and streams `JournalEntries` to
+  `HostService.FollowJournal` until the client disconnects.
+
+### Fleet jobs
+
+A job sends one signed command per target through the same dispatcher, so every agent verifies
+and policy-checks its own copy.
+
+- **Permissions.** The creator needs `jobs.run` and the operation's permission on *every*
+  target (the operation's step-up applies). Above the organization's confirmation threshold,
+  `confirm_target_count` must equal the resolved target count.
+- **Rollout.** Targets run in batches of `batch_size`, with at most `max_concurrency` commands
+  in flight. The job aborts when failures (including policy rejections) exceed
+  `max_failure_percent` of finished executions. Untried targets are marked skipped.
+- **Cancellation and restarts.** `CancelJob` cancels the commands running on agents. A Central
+  restart aborts the job but leaves running agent commands alone, because the operation
+  (which may contain secrets) lived only in memory.
+
 ## Limits (defaults)
 
 | Limit | Value |

@@ -30,10 +30,13 @@ import (
 	"github.com/Shaalan15/central/server/internal/enrollment"
 	"github.com/Shaalan15/central/server/internal/fleet"
 	"github.com/Shaalan15/central/server/internal/httpx"
+	"github.com/Shaalan15/central/server/internal/jobs"
 	"github.com/Shaalan15/central/server/internal/pki"
 	"github.com/Shaalan15/central/server/internal/ratelimit"
+	"github.com/Shaalan15/central/server/internal/sessions"
 	"github.com/Shaalan15/central/server/internal/setup"
 	"github.com/Shaalan15/central/server/internal/store"
+	"github.com/Shaalan15/central/server/internal/terminal"
 )
 
 // Cookie and header names.
@@ -69,6 +72,9 @@ type Deps struct {
 	Fleet    *fleet.Index
 	Enroll   *enrollment.Service
 	Dispatch *dispatch.Dispatcher
+	Attach   *sessions.Manager
+	Terminal *terminal.Service
+	Jobs     *jobs.Runner
 
 	limits limits
 }

@@ -483,16 +483,19 @@ func (x *Job) GetCommandTtl() *durationpb.Duration {
 
 // JobExecution is one agent's part of a job.
 type JobExecution struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	AgentName     string                 `protobuf:"bytes,3,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
-	CommandId     string                 `protobuf:"bytes,4,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	State         v1.CommandState        `protobuf:"varint,5,opt,name=state,proto3,enum=central.agent.v1.CommandState" json:"state,omitempty"`
-	Error         *v1.CommandError       `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
-	Batch         uint32                 `protobuf:"varint,7,opt,name=batch,proto3" json:"batch,omitempty"`
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	JobId      string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AgentId    string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	AgentName  string                 `protobuf:"bytes,3,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
+	CommandId  string                 `protobuf:"bytes,4,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	State      v1.CommandState        `protobuf:"varint,5,opt,name=state,proto3,enum=central.agent.v1.CommandState" json:"state,omitempty"`
+	Error      *v1.CommandError       `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	Batch      uint32                 `protobuf:"varint,7,opt,name=batch,proto3" json:"batch,omitempty"`
+	StartedAt  *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	FinishedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	// Not attempted (agent offline with online_only, job cancelled or aborted first). The
+	// reason is in error.message.
+	Skipped       bool `protobuf:"varint,10,opt,name=skipped,proto3" json:"skipped,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -588,6 +591,13 @@ func (x *JobExecution) GetFinishedAt() *timestamppb.Timestamp {
 		return x.FinishedAt
 	}
 	return nil
+}
+
+func (x *JobExecution) GetSkipped() bool {
+	if x != nil {
+		return x.Skipped
+	}
+	return false
 }
 
 // PreviewTargetsRequest carries a selector.
@@ -1413,7 +1423,7 @@ const file_central_api_v1_jobs_proto_rawDesc = "" +
 	"\vfinished_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"finishedAt\x12:\n" +
 	"\vcommand_ttl\x18\r \x01(\v2\x19.google.protobuf.DurationR\n" +
-	"commandTtl\"\xf8\x02\n" +
+	"commandTtl\"\x92\x03\n" +
 	"\fJobExecution\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
@@ -1427,7 +1437,9 @@ const file_central_api_v1_jobs_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
 	"\vfinished_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"finishedAt\"S\n" +
+	"finishedAt\x12\x18\n" +
+	"\askipped\x18\n" +
+	" \x01(\bR\askipped\"S\n" +
 	"\x15PreviewTargetsRequest\x12:\n" +
 	"\bselector\x18\x01 \x01(\v2\x1e.central.api.v1.TargetSelectorR\bselector\"\x9e\x01\n" +
 	"\x16PreviewTargetsResponse\x12\x14\n" +

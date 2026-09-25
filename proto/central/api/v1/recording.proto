@@ -1,0 +1,68 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/api/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// RecordingService lists and replays recorded terminal sessions. Recordings contain terminal
+// output only (keystrokes are not recorded, so typed passwords never are). Permission
+// audit.view.
+service RecordingService {
+  // ListRecordings lists recordings (newest first), optionally for one agent.
+  rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
+  // ReadRecording streams a recording in asciicast v2 format (newline-delimited JSON).
+  rpc ReadRecording(ReadRecordingRequest) returns (stream ReadRecordingResponse);
+}
+
+// Recording describes one recorded terminal session.
+message Recording {
+  // Terminal session ID.
+  string id = 1;
+  string agent_id = 2;
+  string agent_name = 3;
+  PrincipalRef user = 4;
+  // Linux user the terminal ran as.
+  string run_as = 5;
+  uint32 cols = 6;
+  uint32 rows = 7;
+  google.protobuf.Timestamp started_at = 8;
+  // Unset while the session is still open.
+  google.protobuf.Timestamp ended_at = 9;
+  // Output bytes recorded.
+  uint64 output_bytes = 10;
+  // Exit code of the shell (when known).
+  int32 exit_code = 11;
+  // The size limit was reached; later output was not recorded.
+  bool truncated = 12;
+}
+
+// ListRecordingsRequest filters and pages recordings.
+message ListRecordingsRequest {
+  // Only recordings of this agent.
+  string agent_id = 1;
+  PageRequest page = 2;
+}
+
+// ListRecordingsResponse is a page of recordings.
+message ListRecordingsResponse {
+  repeated Recording recordings = 1;
+  PageResponse page = 2;
+}
+
+// ReadRecordingRequest identifies a recording.
+message ReadRecordingRequest {
+  string recording_id = 1;
+}
+
+// ReadRecordingResponse carries the metadata (first message) or a part of the asciicast.
+message ReadRecordingResponse {
+  oneof part {
+    Recording recording = 1;
+    // A slice of the asciicast v2 text (UTF-8, newline-delimited JSON records).
+    bytes asciicast = 2;
+  }
+}

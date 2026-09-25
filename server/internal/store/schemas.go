@@ -258,6 +258,28 @@ var (
 			}
 		},
 	}
+	RecordingSchema = Schema[*Recording]{
+		SchemaInfo: SchemaInfo{
+			Name: "recordings", Tenant: true,
+			Fields:  []Field{str("agent_id", 36), num("started_at")},
+			Indexes: []Index{idx("agent", false, "agent_id", "started_at"), idx("started", false, "started_at")},
+		},
+		New: func() *Recording { return &Recording{} },
+		IndexOf: func(r *Recording) map[string]any {
+			return map[string]any{"agent_id": r.AgentID, "started_at": Millis(r.StartedAt)}
+		},
+	}
+	RecordingChunkSchema = Schema[*RecordingChunk]{
+		SchemaInfo: SchemaInfo{
+			Name: "recording_chunks", Tenant: true,
+			Fields:  []Field{str("recording_id", 36), num("seq")},
+			Indexes: []Index{idx("recording", false, "recording_id", "seq")},
+		},
+		New: func() *RecordingChunk { return &RecordingChunk{} },
+		IndexOf: func(c *RecordingChunk) map[string]any {
+			return map[string]any{"recording_id": c.RecordingID, "seq": int64(c.Seq)}
+		},
+	}
 	PKISchema = Schema[*PKIItem]{
 		SchemaInfo: SchemaInfo{
 			Name:   "pki",
@@ -283,7 +305,7 @@ func AllSchemas() []SchemaInfo {
 		BlockedKeySchema.SchemaInfo, AgentSchema.SchemaInfo, AgentGroupSchema.SchemaInfo,
 		InventorySchema.SchemaInfo, MetricsChunkSchema.SchemaInfo, CommandSchema.SchemaInfo,
 		JobSchema.SchemaInfo, JobExecutionSchema.SchemaInfo, AuditSchema.SchemaInfo,
-		PKISchema.SchemaInfo, SettingSchema.SchemaInfo,
+		RecordingSchema.SchemaInfo, RecordingChunkSchema.SchemaInfo, PKISchema.SchemaInfo, SettingSchema.SchemaInfo,
 	}
 }
 
@@ -311,6 +333,8 @@ type Store struct {
 	Jobs               *Collection[*Job]
 	JobExecutions      *Collection[*JobExecution]
 	Audit              *Collection[*AuditEvent]
+	Recordings         *Collection[*Recording]
+	RecordingChunks    *Collection[*RecordingChunk]
 	PKI                *Collection[*PKIItem]
 	Settings           *Collection[*Setting]
 }
@@ -339,6 +363,8 @@ func Open(d Driver) *Store {
 		Jobs:               NewCollection(d, JobSchema),
 		JobExecutions:      NewCollection(d, JobExecutionSchema),
 		Audit:              NewCollection(d, AuditSchema),
+		Recordings:         NewCollection(d, RecordingSchema),
+		RecordingChunks:    NewCollection(d, RecordingChunkSchema),
 		PKI:                NewCollection(d, PKISchema),
 		Settings:           NewCollection(d, SettingSchema),
 	}

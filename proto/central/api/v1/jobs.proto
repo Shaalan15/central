@@ -109,6 +109,9 @@ message JobExecution {
   uint32 batch = 7;
   google.protobuf.Timestamp started_at = 8;
   google.protobuf.Timestamp finished_at = 9;
+  // Not attempted (agent offline with online_only, job cancelled or aborted first). The
+  // reason is in error.message.
+  bool skipped = 10;
 }
 
 // PreviewTargetsRequest carries a selector.

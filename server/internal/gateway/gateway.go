@@ -32,6 +32,7 @@ import (
 	"github.com/Shaalan15/central/server/internal/httpx"
 	"github.com/Shaalan15/central/server/internal/pki"
 	"github.com/Shaalan15/central/server/internal/ratelimit"
+	"github.com/Shaalan15/central/server/internal/sessions"
 	"github.com/Shaalan15/central/server/internal/store"
 )
 
@@ -56,6 +57,7 @@ type Gateway struct {
 	Fleet    *fleet.Index
 	Enroll   *enrollment.Service
 	Dispatch *dispatch.Dispatcher
+	Sessions *sessions.Manager
 	Bus      bus.Bus
 	Audit    *audit.Recorder
 	Log      *slog.Logger

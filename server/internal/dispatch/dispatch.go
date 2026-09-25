@@ -77,6 +77,8 @@ type Request struct {
 	Issuer                store.PrincipalRef
 	SourceIP              string
 	Session               *agentv1.SessionBinding
+	// CommandID pre-assigns the command ID (sessions need it before the command is sent).
+	CommandID string
 }
 
 // Event is published on bus.CommandTopic(id) whenever a command changes.
@@ -161,7 +163,12 @@ func (d *Dispatcher) Submit(ctx context.Context, req Request) (store.Command, er
 	}
 
 	now := d.now().UTC()
-	id := store.NewID()
+	id := req.CommandID
+	if id == "" {
+		id = store.NewID()
+	} else if !store.ValidID(id) {
+		return store.Command{}, errors.New("dispatch: invalid command ID")
+	}
 	cmd := &agentv1.Command{
 		CommandId: id, AgentId: req.AgentID, OrgId: req.OrgID,
 		IssuedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(ttl)),

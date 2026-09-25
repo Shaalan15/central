@@ -614,6 +614,48 @@ func (e *JobExecution) EntityID() string { return e.ID }
 // EntityOrgID implements Entity.
 func (e *JobExecution) EntityOrgID() string { return e.OrgID }
 
+// Recording is the metadata of a recorded terminal session. ID is the session ID.
+type Recording struct {
+	ID          string    `json:"id"`
+	OrgID       string    `json:"org_id"`
+	AgentID     string    `json:"agent_id"`
+	AgentName   string    `json:"agent_name"`
+	UserID      string    `json:"user_id"`
+	UserDisplay string    `json:"user_display"`
+	CommandID   string    `json:"command_id"`
+	RunAs       string    `json:"run_as"`
+	Cols        int       `json:"cols"`
+	Rows        int       `json:"rows"`
+	StartedAt   time.Time `json:"started_at"`
+	EndedAt     time.Time `json:"ended_at"`
+	OutputBytes int64     `json:"output_bytes"`
+	Chunks      int       `json:"chunks"`
+	ExitCode    int       `json:"exit_code"`
+	Truncated   bool      `json:"truncated"`
+}
+
+// EntityID implements Entity.
+func (r *Recording) EntityID() string { return r.ID }
+
+// EntityOrgID implements Entity.
+func (r *Recording) EntityOrgID() string { return r.OrgID }
+
+// RecordingChunk is one gzip-compressed slice of a recording's asciicast text.
+// ID = DeriveID(recording, seq).
+type RecordingChunk struct {
+	ID          string `json:"id"`
+	OrgID       string `json:"org_id"`
+	RecordingID string `json:"recording_id"`
+	Seq         int    `json:"seq"`
+	Data        []byte `json:"data"`
+}
+
+// EntityID implements Entity.
+func (c *RecordingChunk) EntityID() string { return c.ID }
+
+// EntityOrgID implements Entity.
+func (c *RecordingChunk) EntityOrgID() string { return c.OrgID }
+
 // Audit results.
 const (
 	AuditSuccess = "success"

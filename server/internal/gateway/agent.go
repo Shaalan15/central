@@ -198,6 +198,15 @@ loop:
 				break loop
 			}
 		case <-recvErr: // the agent closed the stream or the connection dropped
+			// Messages read before the end (e.g. a final CommandUpdate) still count.
+			for drained := false; !drained; {
+				select {
+				case m := <-msgs:
+					_ = s.handle(ctx, id, c, m)
+				default:
+					drained = true
+				}
+			}
 			c.Close(agentv1.Disconnect_REASON_UNSPECIFIED, "")
 			break loop
 		case <-c.done:
@@ -452,7 +461,137 @@ func (s *agentService) RenewCertificate(ctx context.Context, req *connect.Reques
 	}), nil
 }
 
-// AttachSession implements AgentService (interactive sessions arrive with the terminal bridge).
-func (s *agentService) AttachSession(context.Context, *connect.BidiStream[agentv1.SessionFrame, agentv1.SessionFrame]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("interactive sessions are not available yet"))
+// Session frame limits.
+const (
+	maxSessionData    = 32 << 10
+	maxJournalEntries = 1000
+	sessionStall      = 30 * time.Second
+)
+
+// AttachSession implements AgentService: it binds an agent stream to a pending session and
+// relays frames until either side ends it.
+func (s *agentService) AttachSession(ctx context.Context, stream *connect.BidiStream[agentv1.SessionFrame, agentv1.SessionFrame]) error {
+	g := s.g
+	id := identityFrom(ctx)
+	if id == nil {
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("a client certificate is required"))
+	}
+	if g.Sessions == nil {
+		return connect.NewError(connect.CodeUnimplemented, errors.New("interactive sessions are not available"))
+	}
+	frames := make(chan *agentv1.SessionFrame, 16)
+	recvErr := make(chan error, 1)
+	stop := make(chan struct{})
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		for {
+			f, err := stream.Receive()
+			if err != nil {
+				recvErr <- err
+				return
+			}
+			select {
+			case frames <- f:
+			case <-stop:
+				return
+			}
+		}
+	}()
+	stopReader := func() {
+		close(stop)
+		id.ctl.abortRead()
+		<-readerDone
+	}
+
+	var attach *agentv1.SessionAttach
+	timer := time.NewTimer(helloTimeout)
+	select {
+	case f := <-frames:
+		attach = f.GetAttach()
+	case <-recvErr:
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+	timer.Stop()
+	if attach == nil {
+		stopReader()
+		return protocolError("the first frame must be attach")
+	}
+	pipe, err := g.Sessions.Attach(id.OrgID, id.AgentID, attach)
+	if err != nil {
+		stopReader()
+		g.Log.Warn("gateway: rejected session attach", "agent", id.AgentID, "session", truncate(attach.GetSessionId(), 64))
+		return connect.NewError(connect.CodePermissionDenied, errors.New("unknown or expired session"))
+	}
+	defer pipe.Close()
+
+	senderDone := make(chan struct{})
+	go func() {
+		defer close(senderDone)
+		send := func(f *agentv1.SessionFrame) error {
+			id.ctl.writeDeadline(time.Now().Add(writeTimeout))
+			defer id.ctl.writeDeadline(time.Time{})
+			return stream.Send(f)
+		}
+		for {
+			select {
+			case f := <-pipe.Outgoing():
+				if err := send(f); err != nil {
+					pipe.Close()
+					return
+				}
+			case <-pipe.Done():
+				for { // flush what the consumer queued before closing (e.g. SessionClose)
+					select {
+					case f := <-pipe.Outgoing():
+						if send(f) != nil {
+							return
+						}
+					default:
+						return
+					}
+				}
+			}
+		}
+	}()
+
+	var result error
+loop:
+	for {
+		select {
+		case f := <-frames:
+			if len(f.GetData()) > maxSessionData || len(f.GetJournal().GetEntries()) > maxJournalEntries || f.GetAttach() != nil {
+				result = protocolError("session frame too large or out of place")
+				break loop
+			}
+			if err := pipe.Deliver(f, sessionStall); err != nil {
+				break loop
+			}
+			if f.GetClose() != nil {
+				break loop
+			}
+		case <-recvErr:
+			// Frames read before the end (e.g. the final SessionClose) still count.
+			for drained := false; !drained; {
+				select {
+				case f := <-frames:
+					if pipe.Deliver(f, sessionStall) != nil {
+						drained = true
+					}
+				default:
+					drained = true
+				}
+			}
+			break loop
+		case <-pipe.Done():
+			break loop
+		case <-ctx.Done():
+			break loop
+		}
+	}
+	pipe.Close()
+	<-senderDone
+	stopReader()
+	return result
 }

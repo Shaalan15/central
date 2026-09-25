@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +20,9 @@ import (
 	"github.com/Shaalan15/central/server/internal/authz"
 	"github.com/Shaalan15/central/server/internal/dispatch"
 	"github.com/Shaalan15/central/server/internal/ops"
+	"github.com/Shaalan15/central/server/internal/sessions"
 	"github.com/Shaalan15/central/server/internal/store"
+	"github.com/Shaalan15/central/server/internal/terminal"
 )
 
 // HostService implements HostService.
@@ -73,10 +76,15 @@ func commandProto(c *store.Command) *apiv1.CommandRecord {
 		}
 	}
 	if c.ErrorCode != "" || c.ErrorMessage != "" {
-		code := agentv1.ErrorCode(agentv1.ErrorCode_value["ERROR_CODE_"+strings.ToUpper(c.ErrorCode)])
-		out.Error = &agentv1.CommandError{Code: code, Message: c.ErrorMessage}
+		out.Error = &agentv1.CommandError{Code: errorCodeProto(c.ErrorCode), Message: c.ErrorMessage}
 	}
 	return out
+}
+
+// errorCodeProto maps a stored error code ("policy_denied") to the enum (unknown codes such as
+// Central's own "lost" map to UNSPECIFIED; the message explains them).
+func errorCodeProto(name string) agentv1.ErrorCode {
+	return agentv1.ErrorCode(agentv1.ErrorCode_value["ERROR_CODE_"+strings.ToUpper(name)])
 }
 
 func reasonError(code connect.Code, reason string, err error) error {
@@ -289,4 +297,123 @@ func (s *HostService) ListCommands(ctx context.Context, req *connect.Request[api
 		out.Commands = append(out.Commands, commandProto(r))
 	}
 	return connect.NewResponse(out), nil
+}
+
+// OpenTerminal implements HostService.
+func (s *HostService) OpenTerminal(ctx context.Context, req *connect.Request[apiv1.OpenTerminalRequest]) (*connect.Response[apiv1.OpenTerminalResponse], error) {
+	p, v, err := s.D.agentFor(ctx, authz.TerminalOpen, req.Msg.GetAgentId())
+	if err != nil {
+		return nil, err
+	}
+	m := req.Msg
+	op := &agentv1.Operation{Kind: &agentv1.Operation_TerminalOpen{TerminalOpen: &agentv1.TerminalOpen{RunAs: m.GetRunAs(), Cols: m.GetCols(), Rows: m.GetRows()}}}
+	if err := ops.Validate(op); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	res, err := s.D.Terminal.Open(ctx, terminal.OpenRequest{
+		Principal: p, Agent: v, RunAs: m.GetRunAs(), Cols: m.GetCols(), Rows: m.GetRows(), SourceIP: clientIP(ctx),
+	})
+	if errors.Is(err, terminal.ErrNotBrowser) {
+		return nil, connect.NewError(connect.CodePermissionDenied, err)
+	}
+	if err != nil {
+		return nil, s.D.dispatchError(err)
+	}
+	_ = s.D.Audit.Record(ctx, audit.Event{
+		Action: "terminal.opened", TargetType: "agent", TargetID: v.Agent.ID, TargetDisplay: v.Agent.Name,
+		Details: map[string]string{"session_id": res.SessionID, "run_as": m.GetRunAs(), "recorded": strconv.FormatBool(res.Recorded)},
+	})
+	return connect.NewResponse(&apiv1.OpenTerminalResponse{SessionId: res.SessionID, Ticket: res.Ticket, Recorded: res.Recorded}), nil
+}
+
+// FollowJournal implements HostService: it asks the agent to follow the journal over an
+// attached session and relays entries until the client disconnects.
+func (s *HostService) FollowJournal(ctx context.Context, req *connect.Request[apiv1.FollowJournalRequest], stream *connect.ServerStream[apiv1.FollowJournalResponse]) error {
+	p, v, err := s.D.agentFor(ctx, authz.LogsView, req.Msg.GetAgentId())
+	if err != nil {
+		return err
+	}
+	op := &agentv1.Operation{Kind: &agentv1.Operation_JournalFollow{JournalFollow: &agentv1.JournalFollow{
+		Filter: req.Msg.GetFilter(), Backlog: min(req.Msg.GetBacklog(), 1000),
+	}}}
+	if err := ops.Validate(op); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	pending := s.D.Attach.Create(p.OrgID, v.Agent.ID, sessions.Journal)
+	commandID := store.NewID()
+	s.D.Attach.SetCommand(pending, commandID)
+	if _, err := s.D.Dispatch.Submit(ctx, dispatch.Request{
+		OrgID: p.OrgID, AgentID: v.Agent.ID, Operation: op, TTL: sessions.AttachWindow, Issuer: p.Ref(),
+		SourceIP: clientIP(ctx), Session: pending.Binding(), CommandID: commandID,
+	}); err != nil {
+		s.D.Attach.Cancel(pending.ID)
+		return s.D.dispatchError(err)
+	}
+	_ = s.D.Audit.Record(ctx, audit.Event{
+		Action: "host.journal_follow", TargetType: "agent", TargetID: v.Agent.ID, TargetDisplay: v.Agent.Name,
+		Details: map[string]string{"command_id": commandID},
+	})
+	var pipe *sessions.Pipe
+	timer := time.NewTimer(time.Until(pending.Expires))
+	defer timer.Stop()
+	select {
+	case pipe = <-pending.Attached():
+	case <-timer.C:
+		s.D.Attach.Cancel(pending.ID)
+		return connect.NewError(connect.CodeDeadlineExceeded, errors.New("the agent did not start following the journal (is it online?)"))
+	case <-ctx.Done():
+		s.D.Attach.Cancel(pending.ID)
+		_ = s.D.Dispatch.Cancel(context.WithoutCancel(ctx), p.OrgID, commandID)
+		return nil
+	}
+	defer func() {
+		_ = pipe.Send(&agentv1.SessionFrame{Frame: &agentv1.SessionFrame_Close{Close: &agentv1.SessionClose{}}}, time.Second)
+		pipe.Close()
+	}()
+	// Frames are read in order without losing ones delivered just before the session closed.
+	frames := make(chan *agentv1.SessionFrame)
+	go func() {
+		defer close(frames)
+		for {
+			f := pipe.Next(ctx)
+			select {
+			case frames <- f:
+			case <-ctx.Done():
+				return
+			}
+			if f == nil {
+				return
+			}
+		}
+	}()
+	recheck := time.NewTicker(streamRecheck)
+	defer recheck.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-recheck.C:
+			if p = s.D.refreshPrincipal(ctx, p); p == nil {
+				return errStreamAuth
+			}
+			if cur, ok := s.D.Fleet.GetInOrg(p.OrgID, v.Agent.ID); !ok || !p.HasOnAgent(authz.LogsView, cur.Ref()) {
+				return connect.NewError(connect.CodePermissionDenied, errors.New("missing permission "+authz.LogsView+" on this agent"))
+			}
+		case f := <-frames:
+			if f == nil { // session closed and drained
+				return nil
+			}
+			if c := f.GetClose(); c != nil {
+				if msg := c.GetError().GetMessage(); msg != "" {
+					return connect.NewError(connect.CodeAborted, errors.New(msg))
+				}
+				return nil
+			}
+			if entries := f.GetJournal().GetEntries(); len(entries) > 0 {
+				if err := stream.Send(&apiv1.FollowJournalResponse{Entries: entries}); err != nil {
+					return err
+				}
+			}
+		}
+	}
 }

@@ -33,11 +33,14 @@ import (
 	"github.com/Shaalan15/central/server/internal/fleet"
 	"github.com/Shaalan15/central/server/internal/gateway"
 	"github.com/Shaalan15/central/server/internal/httpx"
+	"github.com/Shaalan15/central/server/internal/jobs"
 	"github.com/Shaalan15/central/server/internal/metrics"
 	"github.com/Shaalan15/central/server/internal/pki"
+	"github.com/Shaalan15/central/server/internal/sessions"
 	"github.com/Shaalan15/central/server/internal/setup"
 	"github.com/Shaalan15/central/server/internal/storage"
 	"github.com/Shaalan15/central/server/internal/store"
+	"github.com/Shaalan15/central/server/internal/terminal"
 	"github.com/Shaalan15/central/server/internal/tlsutil"
 	"github.com/Shaalan15/central/server/internal/webui"
 )
@@ -69,6 +72,9 @@ type App struct {
 	Dispatch *dispatch.Dispatcher
 	Enroll   *enrollment.Service
 	Gateway  *gateway.Gateway
+	Sessions *sessions.Manager
+	Terminal *terminal.Service
+	Jobs     *jobs.Runner
 
 	trusted []netip.Prefix
 	webui   *webui.Handler
@@ -128,8 +134,8 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, build Build)
 	}
 	a.Deps.Passkeys = auth.NewPasskeys(a.Holder, a.Deps.PublicURL, extraOrigins)
 	a.Deps.Init()
-	a.initAgents()
 	a.bgCtx = ctx
+	a.initAgents()
 	if st := a.Holder.Get(); st != nil {
 		a.onStoreReady(st) //nolint:contextcheck // components load with the app's background context
 	}
@@ -171,12 +177,20 @@ func (a *App) initAgents() {
 		Holder: a.Holder, PKI: a.PKI, Fleet: a.Fleet, Bus: a.Bus, Audit: a.Deps.Audit, Log: a.Log,
 		MinAgentVersion: MinAgentVersion,
 	}
+	a.Sessions = sessions.NewManager()
 	a.Gateway = &gateway.Gateway{
-		Holder: a.Holder, PKI: a.PKI, Fleet: a.Fleet, Enroll: a.Enroll, Dispatch: a.Dispatch, Bus: a.Bus,
-		Audit: a.Deps.Audit, Log: a.Log, AgentURL: a.Deps.AgentURL, MinAgentVersion: MinAgentVersion,
+		Holder: a.Holder, PKI: a.PKI, Fleet: a.Fleet, Enroll: a.Enroll, Dispatch: a.Dispatch, Sessions: a.Sessions,
+		Bus: a.Bus, Audit: a.Deps.Audit, Log: a.Log, AgentURL: a.Deps.AgentURL, MinAgentVersion: MinAgentVersion,
 	}
+	a.Terminal = &terminal.Service{
+		Holder: a.Holder, Fleet: a.Fleet, Dispatch: a.Dispatch, Sessions: a.Sessions, Auth: a.Deps.Sessions,
+		Cookies: a.Cookies, CookieName: api.SessionCookie, Audit: a.Deps.Audit, Log: a.Log,
+		AllowedOrigins: a.allowedOrigins,
+	}
+	a.Jobs = jobs.New(a.bgCtx, a.Holder, a.Fleet, a.Dispatch, a.Bus, a.Log)
 	d := a.Deps
 	d.Bus, d.PKI, d.Fleet, d.Enroll, d.Dispatch = a.Bus, a.PKI, a.Fleet, a.Enroll, a.Dispatch
+	d.Attach, d.Terminal, d.Jobs = a.Sessions, a.Terminal, a.Jobs
 }
 
 // onStoreReady starts components that need storage. Called once, either at startup or when the
@@ -197,12 +211,18 @@ func (a *App) onStoreReady(st *store.Store) {
 		if err := a.Dispatch.Recover(ctx); err != nil {
 			a.Log.Error("recovering unfinished commands failed", "error", err)
 		}
+		if err := a.Jobs.Recover(ctx); err != nil {
+			a.Log.Error("recovering unfinished jobs failed", "error", err)
+		}
 		a.bg.Go(func() { a.housekeeping(a.bgCtx) })
 	})
 }
 
-// bgWait waits for background work (final flushes) after the context was cancelled.
-func (a *App) bgWait() { a.bg.Wait() }
+// bgWait waits for background work (jobs, final flushes) after the context was cancelled.
+func (a *App) bgWait() {
+	a.Jobs.Wait()
+	a.bg.Wait()
+}
 
 // housekeeping runs periodic maintenance: command expiry, metric persistence and retention,
 // enrollment expiry, last-seen persistence and expired sessions.
@@ -246,6 +266,39 @@ func (a *App) housekeeping(ctx context.Context) {
 			}
 		case <-daily.C:
 			a.pruneMetrics(ctx)
+			a.pruneRecordings(ctx)
+		}
+	}
+}
+
+// pruneRecordings deletes terminal recordings past each organization's retention.
+func (a *App) pruneRecordings(ctx context.Context) {
+	st := a.Holder.Get()
+	if st == nil {
+		return
+	}
+	orgs, err := st.Orgs.All(ctx, store.System(), store.Query{})
+	if err != nil {
+		return
+	}
+	for _, o := range orgs {
+		days := o.Settings.RecordingRetentionDays
+		if days <= 0 {
+			days = store.DefaultOrgSettings().RecordingRetentionDays
+		}
+		scope := store.Tenant(o.ID)
+		cut := store.Millis(time.Now().Add(-time.Duration(days) * 24 * time.Hour))
+		old, _, err := st.Recordings.Find(ctx, scope, store.Where("started_at", store.OpLt, cut).Page(store.MaxLimit, ""))
+		if err != nil {
+			a.Log.Warn("housekeeping: listing old recordings failed", "org_id", o.ID, "error", err)
+			continue
+		}
+		for _, r := range old {
+			if _, err := st.RecordingChunks.DeleteWhere(ctx, scope, store.Eq("recording_id", r.ID)); err != nil {
+				a.Log.Warn("housekeeping: deleting recording chunks failed", "recording", r.ID, "error", err)
+				continue
+			}
+			_ = st.Recordings.Delete(ctx, scope, r.ID)
 		}
 	}
 }
@@ -313,6 +366,8 @@ func (a *App) Handler() http.Handler {
 	mux.Handle(apiv1connect.NewFleetServiceHandler(&api.FleetService{D: d}, opts...))
 	mux.Handle(apiv1connect.NewMetricsServiceHandler(&api.MetricsService{D: d}, opts...))
 	mux.Handle(apiv1connect.NewHostServiceHandler(&api.HostService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewJobServiceHandler(&api.JobService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewRecordingServiceHandler(&api.RecordingService{D: d}, opts...))
 
 	apiHandler := httpx.Chain(mux,
 		httpx.NoStore(),
@@ -328,6 +383,7 @@ func (a *App) Handler() http.Handler {
 	root.HandleFunc("GET /readyz", a.ready)
 	root.HandleFunc("GET /install-agent.sh", a.serveInstallScript)
 	root.HandleFunc("GET /.well-known/central-agent.json", a.serveDiscovery)
+	root.HandleFunc("GET /ws/terminal", a.Terminal.ServeWS)
 	root.Handle("/api/", http.StripPrefix("/api", apiHandler))
 	root.Handle("/", a.webui)
 
