@@ -161,7 +161,7 @@ func (x AgentEvent_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentEvent_Type.Descriptor instead.
 func (AgentEvent_Type) EnumDescriptor() ([]byte, []int) {
-	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{10, 0}
+	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{11, 0}
 }
 
 // AgentMessage is sent from the agent to Central on the control stream.
@@ -435,7 +435,7 @@ func (x *CentralMessage) GetDisconnect() *Disconnect {
 	return nil
 }
 
-func (x *CentralMessage) GetSigningKeys() *CommandSigningKeys {
+func (x *CentralMessage) GetSigningKeys() *SignedKeySet {
 	if x != nil {
 		if x, ok := x.Message.(*CentralMessage_SigningKeys); ok {
 			return x.SigningKeys
@@ -473,7 +473,7 @@ type CentralMessage_Disconnect struct {
 }
 
 type CentralMessage_SigningKeys struct {
-	SigningKeys *CommandSigningKeys `protobuf:"bytes,7,opt,name=signing_keys,json=signingKeys,proto3,oneof"`
+	SigningKeys *SignedKeySet `protobuf:"bytes,7,opt,name=signing_keys,json=signingKeys,proto3,oneof"`
 }
 
 func (*CentralMessage_HelloAck) isCentralMessage_Message() {}
@@ -595,8 +595,9 @@ type HelloAck struct {
 	AgentId    string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	ServerTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=server_time,json=serverTime,proto3" json:"server_time,omitempty"`
 	Config     *AgentConfig           `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
-	// Current command-signing keys (may include a new key during rotation).
-	SigningKeys []*CommandSigningKey `protobuf:"bytes,4,rep,name=signing_keys,json=signingKeys,proto3" json:"signing_keys,omitempty"`
+	// Current command-signing key set, signed by a key the agent already trusts. Present when the
+	// set changed since enrollment (rotation); the agent forwards it to its helper.
+	SigningKeys *SignedKeySet `protobuf:"bytes,4,opt,name=signing_keys,json=signingKeys,proto3" json:"signing_keys,omitempty"`
 	// Minimum agent version Central supports; older agents should upgrade.
 	MinAgentVersion string `protobuf:"bytes,5,opt,name=min_agent_version,json=minAgentVersion,proto3" json:"min_agent_version,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -654,7 +655,7 @@ func (x *HelloAck) GetConfig() *AgentConfig {
 	return nil
 }
 
-func (x *HelloAck) GetSigningKeys() []*CommandSigningKey {
+func (x *HelloAck) GetSigningKeys() *SignedKeySet {
 	if x != nil {
 		return x.SigningKeys
 	}
@@ -974,28 +975,40 @@ func (x *Disconnect) GetRetryAfter() *durationpb.Duration {
 	return nil
 }
 
-// CommandSigningKeys replaces the set of accepted command-signing keys (key rotation).
-type CommandSigningKeys struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Keys          []*CommandSigningKey   `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+// SignedKeySet rotates the command-signing keys the agent accepts.
+//
+// The network-facing agent process is not trusted to change the helper's trust anchors, so a
+// new key set is only accepted when it is signed by a key the helper already trusts:
+//
+//	Ed25519.Verify(trusted_key(key_id), "central-keyset-v1" || 0x00 || key_set, signature)
+//
+// and the decoded set's agent_id matches and its version is greater than the stored version.
+// The initial key set comes from AgentCredentials at enrollment (performed by root).
+type SignedKeySet struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Serialized CommandSigningKeySet.
+	KeySet    []byte `protobuf:"bytes,1,opt,name=key_set,json=keySet,proto3" json:"key_set,omitempty"`
+	Signature []byte `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
+	// ID of the currently trusted key that produced the signature.
+	KeyId         string `protobuf:"bytes,3,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CommandSigningKeys) Reset() {
-	*x = CommandSigningKeys{}
+func (x *SignedKeySet) Reset() {
+	*x = SignedKeySet{}
 	mi := &file_central_agent_v1_agent_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CommandSigningKeys) String() string {
+func (x *SignedKeySet) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CommandSigningKeys) ProtoMessage() {}
+func (*SignedKeySet) ProtoMessage() {}
 
-func (x *CommandSigningKeys) ProtoReflect() protoreflect.Message {
+func (x *SignedKeySet) ProtoReflect() protoreflect.Message {
 	mi := &file_central_agent_v1_agent_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1007,12 +1020,96 @@ func (x *CommandSigningKeys) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CommandSigningKeys.ProtoReflect.Descriptor instead.
-func (*CommandSigningKeys) Descriptor() ([]byte, []int) {
+// Deprecated: Use SignedKeySet.ProtoReflect.Descriptor instead.
+func (*SignedKeySet) Descriptor() ([]byte, []int) {
 	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *CommandSigningKeys) GetKeys() []*CommandSigningKey {
+func (x *SignedKeySet) GetKeySet() []byte {
+	if x != nil {
+		return x.KeySet
+	}
+	return nil
+}
+
+func (x *SignedKeySet) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *SignedKeySet) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+// CommandSigningKeySet is the complete list of accepted command-signing keys.
+type CommandSigningKeySet struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	AgentId string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// Monotonically increasing; older or equal versions are ignored.
+	Version       uint64                 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
+	IssuedAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	Keys          []*CommandSigningKey   `protobuf:"bytes,4,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandSigningKeySet) Reset() {
+	*x = CommandSigningKeySet{}
+	mi := &file_central_agent_v1_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandSigningKeySet) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandSigningKeySet) ProtoMessage() {}
+
+func (x *CommandSigningKeySet) ProtoReflect() protoreflect.Message {
+	mi := &file_central_agent_v1_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandSigningKeySet.ProtoReflect.Descriptor instead.
+func (*CommandSigningKeySet) Descriptor() ([]byte, []int) {
+	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CommandSigningKeySet) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *CommandSigningKeySet) GetVersion() uint64 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *CommandSigningKeySet) GetIssuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return nil
+}
+
+func (x *CommandSigningKeySet) GetKeys() []*CommandSigningKey {
 	if x != nil {
 		return x.Keys
 	}
@@ -1033,7 +1130,7 @@ type AgentEvent struct {
 
 func (x *AgentEvent) Reset() {
 	*x = AgentEvent{}
-	mi := &file_central_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1045,7 +1142,7 @@ func (x *AgentEvent) String() string {
 func (*AgentEvent) ProtoMessage() {}
 
 func (x *AgentEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_central_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1058,7 +1155,7 @@ func (x *AgentEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentEvent.ProtoReflect.Descriptor instead.
 func (*AgentEvent) Descriptor() ([]byte, []int) {
-	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{10}
+	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *AgentEvent) GetType() AgentEvent_Type {
@@ -1099,7 +1196,7 @@ type PolicyReport struct {
 
 func (x *PolicyReport) Reset() {
 	*x = PolicyReport{}
-	mi := &file_central_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1111,7 +1208,7 @@ func (x *PolicyReport) String() string {
 func (*PolicyReport) ProtoMessage() {}
 
 func (x *PolicyReport) ProtoReflect() protoreflect.Message {
-	mi := &file_central_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1124,7 +1221,7 @@ func (x *PolicyReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyReport.ProtoReflect.Descriptor instead.
 func (*PolicyReport) Descriptor() ([]byte, []int) {
-	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{11}
+	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PolicyReport) GetPolicy() *EffectivePolicy {
@@ -1144,7 +1241,7 @@ type RenewCertificateRequest struct {
 
 func (x *RenewCertificateRequest) Reset() {
 	*x = RenewCertificateRequest{}
-	mi := &file_central_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1156,7 +1253,7 @@ func (x *RenewCertificateRequest) String() string {
 func (*RenewCertificateRequest) ProtoMessage() {}
 
 func (x *RenewCertificateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_central_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1169,7 +1266,7 @@ func (x *RenewCertificateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewCertificateRequest.ProtoReflect.Descriptor instead.
 func (*RenewCertificateRequest) Descriptor() ([]byte, []int) {
-	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{12}
+	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RenewCertificateRequest) GetCsrDer() []byte {
@@ -1190,7 +1287,7 @@ type RenewCertificateResponse struct {
 
 func (x *RenewCertificateResponse) Reset() {
 	*x = RenewCertificateResponse{}
-	mi := &file_central_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1202,7 +1299,7 @@ func (x *RenewCertificateResponse) String() string {
 func (*RenewCertificateResponse) ProtoMessage() {}
 
 func (x *RenewCertificateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_central_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_central_agent_v1_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1215,7 +1312,7 @@ func (x *RenewCertificateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewCertificateResponse.ProtoReflect.Descriptor instead.
 func (*RenewCertificateResponse) Descriptor() ([]byte, []int) {
-	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{13}
+	return file_central_agent_v1_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RenewCertificateResponse) GetCertificateDer() []byte {
@@ -1245,7 +1342,7 @@ const file_central_agent_v1_agent_proto_rawDesc = "" +
 	"\x0ecommand_update\x18\x05 \x01(\v2\x1f.central.agent.v1.CommandUpdateH\x00R\rcommandUpdate\x124\n" +
 	"\x05event\x18\x06 \x01(\v2\x1c.central.agent.v1.AgentEventH\x00R\x05event\x128\n" +
 	"\x06policy\x18\a \x01(\v2\x1e.central.agent.v1.PolicyReportH\x00R\x06policyB\t\n" +
-	"\amessage\"\xe5\x03\n" +
+	"\amessage\"\xdf\x03\n" +
 	"\x0eCentralMessage\x129\n" +
 	"\thello_ack\x18\x01 \x01(\v2\x1a.central.agent.v1.HelloAckH\x00R\bhelloAck\x12;\n" +
 	"\acommand\x18\x02 \x01(\v2\x1f.central.agent.v1.SignedCommandH\x00R\acommand\x129\n" +
@@ -1254,8 +1351,8 @@ const file_central_agent_v1_agent_proto_rawDesc = "" +
 	"\x11request_inventory\x18\x05 \x01(\v2\".central.agent.v1.RequestInventoryH\x00R\x10requestInventory\x12>\n" +
 	"\n" +
 	"disconnect\x18\x06 \x01(\v2\x1c.central.agent.v1.DisconnectH\x00R\n" +
-	"disconnect\x12I\n" +
-	"\fsigning_keys\x18\a \x01(\v2$.central.agent.v1.CommandSigningKeysH\x00R\vsigningKeysB\t\n" +
+	"disconnect\x12C\n" +
+	"\fsigning_keys\x18\a \x01(\v2\x1e.central.agent.v1.SignedKeySetH\x00R\vsigningKeysB\t\n" +
 	"\amessage\"\xcc\x02\n" +
 	"\x05Hello\x12#\n" +
 	"\ragent_version\x18\x01 \x01(\tR\fagentVersion\x12)\n" +
@@ -1265,13 +1362,13 @@ const file_central_agent_v1_agent_proto_rawDesc = "" +
 	"\x06policy\x18\x05 \x01(\v2!.central.agent.v1.EffectivePolicyR\x06policy\x129\n" +
 	"\n" +
 	"agent_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tagentTime\x12.\n" +
-	"\x13running_command_ids\x18\a \x03(\tR\x11runningCommandIds\"\x8d\x02\n" +
+	"\x13running_command_ids\x18\a \x03(\tR\x11runningCommandIds\"\x88\x02\n" +
 	"\bHelloAck\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12;\n" +
 	"\vserver_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"serverTime\x125\n" +
-	"\x06config\x18\x03 \x01(\v2\x1d.central.agent.v1.AgentConfigR\x06config\x12F\n" +
-	"\fsigning_keys\x18\x04 \x03(\v2#.central.agent.v1.CommandSigningKeyR\vsigningKeys\x12*\n" +
+	"\x06config\x18\x03 \x01(\v2\x1d.central.agent.v1.AgentConfigR\x06config\x12A\n" +
+	"\fsigning_keys\x18\x04 \x01(\v2\x1e.central.agent.v1.SignedKeySetR\vsigningKeys\x12*\n" +
 	"\x11min_agent_version\x18\x05 \x01(\tR\x0fminAgentVersion\"f\n" +
 	"\tHeartbeat\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12)\n" +
@@ -1302,9 +1399,16 @@ const file_central_agent_v1_agent_proto_rawDesc = "" +
 	"\x0fREASON_SHUTDOWN\x10\x02\x12\x1b\n" +
 	"\x17REASON_UPGRADE_REQUIRED\x10\x03\x12\x13\n" +
 	"\x0fREASON_REPLACED\x10\x04\x12\x1c\n" +
-	"\x18REASON_RENEW_CERTIFICATE\x10\x05\"M\n" +
-	"\x12CommandSigningKeys\x127\n" +
-	"\x04keys\x18\x01 \x03(\v2#.central.agent.v1.CommandSigningKeyR\x04keys\"\xfc\x03\n" +
+	"\x18REASON_RENEW_CERTIFICATE\x10\x05\"\\\n" +
+	"\fSignedKeySet\x12\x17\n" +
+	"\akey_set\x18\x01 \x01(\fR\x06keySet\x12\x1c\n" +
+	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x15\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\xbd\x01\n" +
+	"\x14CommandSigningKeySet\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x04R\aversion\x127\n" +
+	"\tissued_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x127\n" +
+	"\x04keys\x18\x04 \x03(\v2#.central.agent.v1.CommandSigningKeyR\x04keys\"\xfc\x03\n" +
 	"\n" +
 	"AgentEvent\x125\n" +
 	"\x04type\x18\x01 \x01(\x0e2!.central.agent.v1.AgentEvent.TypeR\x04type\x12.\n" +
@@ -1353,7 +1457,7 @@ func file_central_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_central_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_central_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_central_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_central_agent_v1_agent_proto_goTypes = []any{
 	(Disconnect_Reason)(0),           // 0: central.agent.v1.Disconnect.Reason
 	(AgentEvent_Type)(0),             // 1: central.agent.v1.AgentEvent.Type
@@ -1366,68 +1470,70 @@ var file_central_agent_v1_agent_proto_goTypes = []any{
 	(*CancelCommand)(nil),            // 8: central.agent.v1.CancelCommand
 	(*RequestInventory)(nil),         // 9: central.agent.v1.RequestInventory
 	(*Disconnect)(nil),               // 10: central.agent.v1.Disconnect
-	(*CommandSigningKeys)(nil),       // 11: central.agent.v1.CommandSigningKeys
-	(*AgentEvent)(nil),               // 12: central.agent.v1.AgentEvent
-	(*PolicyReport)(nil),             // 13: central.agent.v1.PolicyReport
-	(*RenewCertificateRequest)(nil),  // 14: central.agent.v1.RenewCertificateRequest
-	(*RenewCertificateResponse)(nil), // 15: central.agent.v1.RenewCertificateResponse
-	nil,                              // 16: central.agent.v1.AgentEvent.AttributesEntry
-	(*MetricsReport)(nil),            // 17: central.agent.v1.MetricsReport
-	(*InventoryReport)(nil),          // 18: central.agent.v1.InventoryReport
-	(*CommandUpdate)(nil),            // 19: central.agent.v1.CommandUpdate
-	(*SignedCommand)(nil),            // 20: central.agent.v1.SignedCommand
-	(*HostFacts)(nil),                // 21: central.agent.v1.HostFacts
-	(*EffectivePolicy)(nil),          // 22: central.agent.v1.EffectivePolicy
-	(*timestamppb.Timestamp)(nil),    // 23: google.protobuf.Timestamp
-	(*CommandSigningKey)(nil),        // 24: central.agent.v1.CommandSigningKey
+	(*SignedKeySet)(nil),             // 11: central.agent.v1.SignedKeySet
+	(*CommandSigningKeySet)(nil),     // 12: central.agent.v1.CommandSigningKeySet
+	(*AgentEvent)(nil),               // 13: central.agent.v1.AgentEvent
+	(*PolicyReport)(nil),             // 14: central.agent.v1.PolicyReport
+	(*RenewCertificateRequest)(nil),  // 15: central.agent.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil), // 16: central.agent.v1.RenewCertificateResponse
+	nil,                              // 17: central.agent.v1.AgentEvent.AttributesEntry
+	(*MetricsReport)(nil),            // 18: central.agent.v1.MetricsReport
+	(*InventoryReport)(nil),          // 19: central.agent.v1.InventoryReport
+	(*CommandUpdate)(nil),            // 20: central.agent.v1.CommandUpdate
+	(*SignedCommand)(nil),            // 21: central.agent.v1.SignedCommand
+	(*HostFacts)(nil),                // 22: central.agent.v1.HostFacts
+	(*EffectivePolicy)(nil),          // 23: central.agent.v1.EffectivePolicy
+	(*timestamppb.Timestamp)(nil),    // 24: google.protobuf.Timestamp
 	(*durationpb.Duration)(nil),      // 25: google.protobuf.Duration
 	(InventoryKind)(0),               // 26: central.agent.v1.InventoryKind
-	(*SessionFrame)(nil),             // 27: central.agent.v1.SessionFrame
+	(*CommandSigningKey)(nil),        // 27: central.agent.v1.CommandSigningKey
+	(*SessionFrame)(nil),             // 28: central.agent.v1.SessionFrame
 }
 var file_central_agent_v1_agent_proto_depIdxs = []int32{
 	4,  // 0: central.agent.v1.AgentMessage.hello:type_name -> central.agent.v1.Hello
 	6,  // 1: central.agent.v1.AgentMessage.heartbeat:type_name -> central.agent.v1.Heartbeat
-	17, // 2: central.agent.v1.AgentMessage.metrics:type_name -> central.agent.v1.MetricsReport
-	18, // 3: central.agent.v1.AgentMessage.inventory:type_name -> central.agent.v1.InventoryReport
-	19, // 4: central.agent.v1.AgentMessage.command_update:type_name -> central.agent.v1.CommandUpdate
-	12, // 5: central.agent.v1.AgentMessage.event:type_name -> central.agent.v1.AgentEvent
-	13, // 6: central.agent.v1.AgentMessage.policy:type_name -> central.agent.v1.PolicyReport
+	18, // 2: central.agent.v1.AgentMessage.metrics:type_name -> central.agent.v1.MetricsReport
+	19, // 3: central.agent.v1.AgentMessage.inventory:type_name -> central.agent.v1.InventoryReport
+	20, // 4: central.agent.v1.AgentMessage.command_update:type_name -> central.agent.v1.CommandUpdate
+	13, // 5: central.agent.v1.AgentMessage.event:type_name -> central.agent.v1.AgentEvent
+	14, // 6: central.agent.v1.AgentMessage.policy:type_name -> central.agent.v1.PolicyReport
 	5,  // 7: central.agent.v1.CentralMessage.hello_ack:type_name -> central.agent.v1.HelloAck
-	20, // 8: central.agent.v1.CentralMessage.command:type_name -> central.agent.v1.SignedCommand
+	21, // 8: central.agent.v1.CentralMessage.command:type_name -> central.agent.v1.SignedCommand
 	8,  // 9: central.agent.v1.CentralMessage.cancel:type_name -> central.agent.v1.CancelCommand
 	7,  // 10: central.agent.v1.CentralMessage.config:type_name -> central.agent.v1.AgentConfig
 	9,  // 11: central.agent.v1.CentralMessage.request_inventory:type_name -> central.agent.v1.RequestInventory
 	10, // 12: central.agent.v1.CentralMessage.disconnect:type_name -> central.agent.v1.Disconnect
-	11, // 13: central.agent.v1.CentralMessage.signing_keys:type_name -> central.agent.v1.CommandSigningKeys
-	21, // 14: central.agent.v1.Hello.facts:type_name -> central.agent.v1.HostFacts
-	22, // 15: central.agent.v1.Hello.policy:type_name -> central.agent.v1.EffectivePolicy
-	23, // 16: central.agent.v1.Hello.agent_time:type_name -> google.protobuf.Timestamp
-	23, // 17: central.agent.v1.HelloAck.server_time:type_name -> google.protobuf.Timestamp
+	11, // 13: central.agent.v1.CentralMessage.signing_keys:type_name -> central.agent.v1.SignedKeySet
+	22, // 14: central.agent.v1.Hello.facts:type_name -> central.agent.v1.HostFacts
+	23, // 15: central.agent.v1.Hello.policy:type_name -> central.agent.v1.EffectivePolicy
+	24, // 16: central.agent.v1.Hello.agent_time:type_name -> google.protobuf.Timestamp
+	24, // 17: central.agent.v1.HelloAck.server_time:type_name -> google.protobuf.Timestamp
 	7,  // 18: central.agent.v1.HelloAck.config:type_name -> central.agent.v1.AgentConfig
-	24, // 19: central.agent.v1.HelloAck.signing_keys:type_name -> central.agent.v1.CommandSigningKey
-	23, // 20: central.agent.v1.Heartbeat.time:type_name -> google.protobuf.Timestamp
+	11, // 19: central.agent.v1.HelloAck.signing_keys:type_name -> central.agent.v1.SignedKeySet
+	24, // 20: central.agent.v1.Heartbeat.time:type_name -> google.protobuf.Timestamp
 	25, // 21: central.agent.v1.AgentConfig.metrics_interval:type_name -> google.protobuf.Duration
 	25, // 22: central.agent.v1.AgentConfig.inventory_interval:type_name -> google.protobuf.Duration
 	25, // 23: central.agent.v1.AgentConfig.heartbeat_interval:type_name -> google.protobuf.Duration
 	26, // 24: central.agent.v1.RequestInventory.kinds:type_name -> central.agent.v1.InventoryKind
 	0,  // 25: central.agent.v1.Disconnect.reason:type_name -> central.agent.v1.Disconnect.Reason
 	25, // 26: central.agent.v1.Disconnect.retry_after:type_name -> google.protobuf.Duration
-	24, // 27: central.agent.v1.CommandSigningKeys.keys:type_name -> central.agent.v1.CommandSigningKey
-	1,  // 28: central.agent.v1.AgentEvent.type:type_name -> central.agent.v1.AgentEvent.Type
-	23, // 29: central.agent.v1.AgentEvent.time:type_name -> google.protobuf.Timestamp
-	16, // 30: central.agent.v1.AgentEvent.attributes:type_name -> central.agent.v1.AgentEvent.AttributesEntry
-	22, // 31: central.agent.v1.PolicyReport.policy:type_name -> central.agent.v1.EffectivePolicy
-	2,  // 32: central.agent.v1.AgentService.Connect:input_type -> central.agent.v1.AgentMessage
-	27, // 33: central.agent.v1.AgentService.AttachSession:input_type -> central.agent.v1.SessionFrame
-	14, // 34: central.agent.v1.AgentService.RenewCertificate:input_type -> central.agent.v1.RenewCertificateRequest
-	3,  // 35: central.agent.v1.AgentService.Connect:output_type -> central.agent.v1.CentralMessage
-	27, // 36: central.agent.v1.AgentService.AttachSession:output_type -> central.agent.v1.SessionFrame
-	15, // 37: central.agent.v1.AgentService.RenewCertificate:output_type -> central.agent.v1.RenewCertificateResponse
-	35, // [35:38] is the sub-list for method output_type
-	32, // [32:35] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	24, // 27: central.agent.v1.CommandSigningKeySet.issued_at:type_name -> google.protobuf.Timestamp
+	27, // 28: central.agent.v1.CommandSigningKeySet.keys:type_name -> central.agent.v1.CommandSigningKey
+	1,  // 29: central.agent.v1.AgentEvent.type:type_name -> central.agent.v1.AgentEvent.Type
+	24, // 30: central.agent.v1.AgentEvent.time:type_name -> google.protobuf.Timestamp
+	17, // 31: central.agent.v1.AgentEvent.attributes:type_name -> central.agent.v1.AgentEvent.AttributesEntry
+	23, // 32: central.agent.v1.PolicyReport.policy:type_name -> central.agent.v1.EffectivePolicy
+	2,  // 33: central.agent.v1.AgentService.Connect:input_type -> central.agent.v1.AgentMessage
+	28, // 34: central.agent.v1.AgentService.AttachSession:input_type -> central.agent.v1.SessionFrame
+	15, // 35: central.agent.v1.AgentService.RenewCertificate:input_type -> central.agent.v1.RenewCertificateRequest
+	3,  // 36: central.agent.v1.AgentService.Connect:output_type -> central.agent.v1.CentralMessage
+	28, // 37: central.agent.v1.AgentService.AttachSession:output_type -> central.agent.v1.SessionFrame
+	16, // 38: central.agent.v1.AgentService.RenewCertificate:output_type -> central.agent.v1.RenewCertificateResponse
+	36, // [36:39] is the sub-list for method output_type
+	33, // [33:36] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_central_agent_v1_agent_proto_init() }
@@ -1466,7 +1572,7 @@ func file_central_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_central_agent_v1_agent_proto_rawDesc), len(file_central_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

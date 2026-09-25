@@ -66,7 +66,7 @@ message CentralMessage {
     AgentConfig config = 4;
     RequestInventory request_inventory = 5;
     Disconnect disconnect = 6;
-    CommandSigningKeys signing_keys = 7;
+    SignedKeySet signing_keys = 7;
   }
 }
 
@@ -92,8 +92,9 @@ message HelloAck {
   string agent_id = 1;
   google.protobuf.Timestamp server_time = 2;
   AgentConfig config = 3;
-  // Current command-signing keys (may include a new key during rotation).
-  repeated CommandSigningKey signing_keys = 4;
+  // Current command-signing key set, signed by a key the agent already trusts. Present when the
+  // set changed since enrollment (rotation); the agent forwards it to its helper.
+  SignedKeySet signing_keys = 4;
   // Minimum agent version Central supports; older agents should upgrade.
   string min_agent_version = 5;
 }
@@ -155,9 +156,28 @@ message Disconnect {
   google.protobuf.Duration retry_after = 3;
 }
 
-// CommandSigningKeys replaces the set of accepted command-signing keys (key rotation).
-message CommandSigningKeys {
-  repeated CommandSigningKey keys = 1;
+// SignedKeySet rotates the command-signing keys the agent accepts.
+//
+// The network-facing agent process is not trusted to change the helper's trust anchors, so a
+// new key set is only accepted when it is signed by a key the helper already trusts:
+//   Ed25519.Verify(trusted_key(key_id), "central-keyset-v1" || 0x00 || key_set, signature)
+// and the decoded set's agent_id matches and its version is greater than the stored version.
+// The initial key set comes from AgentCredentials at enrollment (performed by root).
+message SignedKeySet {
+  // Serialized CommandSigningKeySet.
+  bytes key_set = 1;
+  bytes signature = 2;
+  // ID of the currently trusted key that produced the signature.
+  string key_id = 3;
+}
+
+// CommandSigningKeySet is the complete list of accepted command-signing keys.
+message CommandSigningKeySet {
+  string agent_id = 1;
+  // Monotonically increasing; older or equal versions are ignored.
+  uint64 version = 2;
+  google.protobuf.Timestamp issued_at = 3;
+  repeated CommandSigningKey keys = 4;
 }
 
 // AgentEvent is a notable change on the host.

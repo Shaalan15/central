@@ -29,7 +29,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file central/agent/v1/agent.proto.
  */
 export const file_central_agent_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("ChxjZW50cmFsL2FnZW50L3YxL2FnZW50LnByb3RvEhBjZW50cmFsLmFnZW50LnYxIv0CCgxBZ2VudE1lc3NhZ2USKAoFaGVsbG8YASABKAsyFy5jZW50cmFsLmFnZW50LnYxLkhlbGxvSAASMAoJaGVhcnRiZWF0GAIgASgLMhsuY2VudHJhbC5hZ2VudC52MS5IZWFydGJlYXRIABIyCgdtZXRyaWNzGAMgASgLMh8uY2VudHJhbC5hZ2VudC52MS5NZXRyaWNzUmVwb3J0SAASNgoJaW52ZW50b3J5GAQgASgLMiEuY2VudHJhbC5hZ2VudC52MS5JbnZlbnRvcnlSZXBvcnRIABI5Cg5jb21tYW5kX3VwZGF0ZRgFIAEoCzIfLmNlbnRyYWwuYWdlbnQudjEuQ29tbWFuZFVwZGF0ZUgAEi0KBWV2ZW50GAYgASgLMhwuY2VudHJhbC5hZ2VudC52MS5BZ2VudEV2ZW50SAASMAoGcG9saWN5GAcgASgLMh4uY2VudHJhbC5hZ2VudC52MS5Qb2xpY3lSZXBvcnRIAEIJCgdtZXNzYWdlIpcDCg5DZW50cmFsTWVzc2FnZRIvCgloZWxsb19hY2sYASABKAsyGi5jZW50cmFsLmFnZW50LnYxLkhlbGxvQWNrSAASMgoHY29tbWFuZBgCIAEoCzIfLmNlbnRyYWwuYWdlbnQudjEuU2lnbmVkQ29tbWFuZEgAEjEKBmNhbmNlbBgDIAEoCzIfLmNlbnRyYWwuYWdlbnQudjEuQ2FuY2VsQ29tbWFuZEgAEi8KBmNvbmZpZxgEIAEoCzIdLmNlbnRyYWwuYWdlbnQudjEuQWdlbnRDb25maWdIABI/ChFyZXF1ZXN0X2ludmVudG9yeRgFIAEoCzIiLmNlbnRyYWwuYWdlbnQudjEuUmVxdWVzdEludmVudG9yeUgAEjIKCmRpc2Nvbm5lY3QYBiABKAsyHC5jZW50cmFsLmFnZW50LnYxLkRpc2Nvbm5lY3RIABI8CgxzaWduaW5nX2tleXMYByABKAsyJC5jZW50cmFsLmFnZW50LnYxLkNvbW1hbmRTaWduaW5nS2V5c0gAQgkKB21lc3NhZ2Ui9gEKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSGAoQcHJvdG9jb2xfdmVyc2lvbhgCIAEoDRIQCghmZWF0dXJlcxgDIAMoCRIqCgVmYWN0cxgEIAEoCzIbLmNlbnRyYWwuYWdlbnQudjEuSG9zdEZhY3RzEjEKBnBvbGljeRgFIAEoCzIhLmNlbnRyYWwuYWdlbnQudjEuRWZmZWN0aXZlUG9saWN5Ei4KCmFnZW50X3RpbWUYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhsKE3J1bm5pbmdfY29tbWFuZF9pZHMYByADKAki0gEKCEhlbGxvQWNrEhAKCGFnZW50X2lkGAEgASgJEi8KC3NlcnZlcl90aW1lGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCgZjb25maWcYAyABKAsyHS5jZW50cmFsLmFnZW50LnYxLkFnZW50Q29uZmlnEjkKDHNpZ25pbmdfa2V5cxgEIAMoCzIjLmNlbnRyYWwuYWdlbnQudjEuQ29tbWFuZFNpZ25pbmdLZXkSGQoRbWluX2FnZW50X3ZlcnNpb24YBSABKAkiTwoJSGVhcnRiZWF0EigKBHRpbWUYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhgKEHJ1bm5pbmdfY29tbWFuZHMYAiABKA0ioQIKC0FnZW50Q29uZmlnEjMKEG1ldHJpY3NfaW50ZXJ2YWwYASABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SNQoSaW52ZW50b3J5X2ludGVydmFsGAIgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjUKEmhlYXJ0YmVhdF9pbnRlcnZhbBgDIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIYChBtYXhfb3V0cHV0X2J5dGVzGAQgASgEEh8KF21heF9jb25jdXJyZW50X2NvbW1hbmRzGAUgASgNEh4KFm9mZmxpbmVfYnVmZmVyX3NhbXBsZXMYBiABKA0SFAoMcGVyX2NvcmVfY3B1GAcgASgIIiMKDUNhbmNlbENvbW1hbmQSEgoKY29tbWFuZF9pZBgBIAEoCSJCChBSZXF1ZXN0SW52ZW50b3J5Ei4KBWtpbmRzGAEgAygOMh8uY2VudHJhbC5hZ2VudC52MS5JbnZlbnRvcnlLaW5kIp4CCgpEaXNjb25uZWN0EjMKBnJlYXNvbhgBIAEoDjIjLmNlbnRyYWwuYWdlbnQudjEuRGlzY29ubmVjdC5SZWFzb24SDwoHbWVzc2FnZRgCIAEoCRIuCgtyZXRyeV9hZnRlchgDIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbiKZAQoGUmVhc29uEhYKElJFQVNPTl9VTlNQRUNJRklFRBAAEhIKDlJFQVNPTl9SRVZPS0VEEAESEwoPUkVBU09OX1NIVVRET1dOEAISGwoXUkVBU09OX1VQR1JBREVfUkVRVUlSRUQQAxITCg9SRUFTT05fUkVQTEFDRUQQBBIcChhSRUFTT05fUkVORVdfQ0VSVElGSUNBVEUQBSJHChJDb21tYW5kU2lnbmluZ0tleXMSMQoEa2V5cxgBIAMoCzIjLmNlbnRyYWwuYWdlbnQudjEuQ29tbWFuZFNpZ25pbmdLZXkizwMKCkFnZW50RXZlbnQSLwoEdHlwZRgBIAEoDjIhLmNlbnRyYWwuYWdlbnQudjEuQWdlbnRFdmVudC5UeXBlEigKBHRpbWUYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB21lc3NhZ2UYAyABKAkSQAoKYXR0cmlidXRlcxgEIAMoCzIsLmNlbnRyYWwuYWdlbnQudjEuQWdlbnRFdmVudC5BdHRyaWJ1dGVzRW50cnkaMQoPQXR0cmlidXRlc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEi3wEKBFR5cGUSFAoQVFlQRV9VTlNQRUNJRklFRBAAEhcKE1RZUEVfUE9MSUNZX0NIQU5HRUQQARIPCgtUWVBFX1BBVVNFRBACEhAKDFRZUEVfUkVTVU1FRBADEhgKFFRZUEVfUkVCT09UX1JFUVVJUkVEEAQSFwoTVFlQRV9TRVJWSUNFX0ZBSUxFRBAFEhkKFVRZUEVfRElTS19BTE1PU1RfRlVMTBAGEhwKGFRZUEVfTkVUV09SS19ST0xMRURfQkFDSxAHEhkKFVRZUEVfQUdFTlRfUkVTVEFSVElORxAIIkEKDFBvbGljeVJlcG9ydBIxCgZwb2xpY3kYASABKAsyIS5jZW50cmFsLmFnZW50LnYxLkVmZmVjdGl2ZVBvbGljeSIqChdSZW5ld0NlcnRpZmljYXRlUmVxdWVzdBIPCgdjc3JfZGVyGAEgASgMIlAKGFJlbmV3Q2VydGlmaWNhdGVSZXNwb25zZRIXCg9jZXJ0aWZpY2F0ZV9kZXIYASABKAwSGwoTY2FfY2VydGlmaWNhdGVzX2RlchgCIAMoDDKfAgoMQWdlbnRTZXJ2aWNlEk8KB0Nvbm5lY3QSHi5jZW50cmFsLmFnZW50LnYxLkFnZW50TWVzc2FnZRogLmNlbnRyYWwuYWdlbnQudjEuQ2VudHJhbE1lc3NhZ2UoATABElMKDUF0dGFjaFNlc3Npb24SHi5jZW50cmFsLmFnZW50LnYxLlNlc3Npb25GcmFtZRoeLmNlbnRyYWwuYWdlbnQudjEuU2Vzc2lvbkZyYW1lKAEwARJpChBSZW5ld0NlcnRpZmljYXRlEikuY2VudHJhbC5hZ2VudC52MS5SZW5ld0NlcnRpZmljYXRlUmVxdWVzdBoqLmNlbnRyYWwuYWdlbnQudjEuUmVuZXdDZXJ0aWZpY2F0ZVJlc3BvbnNlQsIBChRjb20uY2VudHJhbC5hZ2VudC52MUIKQWdlbnRQcm90b1ABWjxnaXRodWIuY29tL1NoYWFsYW4xNS9jZW50cmFsL2dlbi9nby9jZW50cmFsL2FnZW50L3YxO2FnZW50djGiAgNDQViqAhBDZW50cmFsLkFnZW50LlYxygIQQ2VudHJhbFxBZ2VudFxWMeICHENlbnRyYWxcQWdlbnRcVjFcR1BCTWV0YWRhdGHqAhJDZW50cmFsOjpBZ2VudDo6VjFiBnByb3RvMw", [file_central_agent_v1_command, file_central_agent_v1_enrollment, file_central_agent_v1_host, file_central_agent_v1_policy, file_central_agent_v1_session, file_central_agent_v1_system, file_central_agent_v1_telemetry, file_google_protobuf_duration, file_google_protobuf_timestamp]);
+  fileDesc("ChxjZW50cmFsL2FnZW50L3YxL2FnZW50LnByb3RvEhBjZW50cmFsLmFnZW50LnYxIv0CCgxBZ2VudE1lc3NhZ2USKAoFaGVsbG8YASABKAsyFy5jZW50cmFsLmFnZW50LnYxLkhlbGxvSAASMAoJaGVhcnRiZWF0GAIgASgLMhsuY2VudHJhbC5hZ2VudC52MS5IZWFydGJlYXRIABIyCgdtZXRyaWNzGAMgASgLMh8uY2VudHJhbC5hZ2VudC52MS5NZXRyaWNzUmVwb3J0SAASNgoJaW52ZW50b3J5GAQgASgLMiEuY2VudHJhbC5hZ2VudC52MS5JbnZlbnRvcnlSZXBvcnRIABI5Cg5jb21tYW5kX3VwZGF0ZRgFIAEoCzIfLmNlbnRyYWwuYWdlbnQudjEuQ29tbWFuZFVwZGF0ZUgAEi0KBWV2ZW50GAYgASgLMhwuY2VudHJhbC5hZ2VudC52MS5BZ2VudEV2ZW50SAASMAoGcG9saWN5GAcgASgLMh4uY2VudHJhbC5hZ2VudC52MS5Qb2xpY3lSZXBvcnRIAEIJCgdtZXNzYWdlIpEDCg5DZW50cmFsTWVzc2FnZRIvCgloZWxsb19hY2sYASABKAsyGi5jZW50cmFsLmFnZW50LnYxLkhlbGxvQWNrSAASMgoHY29tbWFuZBgCIAEoCzIfLmNlbnRyYWwuYWdlbnQudjEuU2lnbmVkQ29tbWFuZEgAEjEKBmNhbmNlbBgDIAEoCzIfLmNlbnRyYWwuYWdlbnQudjEuQ2FuY2VsQ29tbWFuZEgAEi8KBmNvbmZpZxgEIAEoCzIdLmNlbnRyYWwuYWdlbnQudjEuQWdlbnRDb25maWdIABI/ChFyZXF1ZXN0X2ludmVudG9yeRgFIAEoCzIiLmNlbnRyYWwuYWdlbnQudjEuUmVxdWVzdEludmVudG9yeUgAEjIKCmRpc2Nvbm5lY3QYBiABKAsyHC5jZW50cmFsLmFnZW50LnYxLkRpc2Nvbm5lY3RIABI2CgxzaWduaW5nX2tleXMYByABKAsyHi5jZW50cmFsLmFnZW50LnYxLlNpZ25lZEtleVNldEgAQgkKB21lc3NhZ2Ui9gEKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSGAoQcHJvdG9jb2xfdmVyc2lvbhgCIAEoDRIQCghmZWF0dXJlcxgDIAMoCRIqCgVmYWN0cxgEIAEoCzIbLmNlbnRyYWwuYWdlbnQudjEuSG9zdEZhY3RzEjEKBnBvbGljeRgFIAEoCzIhLmNlbnRyYWwuYWdlbnQudjEuRWZmZWN0aXZlUG9saWN5Ei4KCmFnZW50X3RpbWUYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhsKE3J1bm5pbmdfY29tbWFuZF9pZHMYByADKAkizQEKCEhlbGxvQWNrEhAKCGFnZW50X2lkGAEgASgJEi8KC3NlcnZlcl90aW1lGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBItCgZjb25maWcYAyABKAsyHS5jZW50cmFsLmFnZW50LnYxLkFnZW50Q29uZmlnEjQKDHNpZ25pbmdfa2V5cxgEIAEoCzIeLmNlbnRyYWwuYWdlbnQudjEuU2lnbmVkS2V5U2V0EhkKEW1pbl9hZ2VudF92ZXJzaW9uGAUgASgJIk8KCUhlYXJ0YmVhdBIoCgR0aW1lGAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIYChBydW5uaW5nX2NvbW1hbmRzGAIgASgNIqECCgtBZ2VudENvbmZpZxIzChBtZXRyaWNzX2ludGVydmFsGAEgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjUKEmludmVudG9yeV9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhI1ChJoZWFydGJlYXRfaW50ZXJ2YWwYAyABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SGAoQbWF4X291dHB1dF9ieXRlcxgEIAEoBBIfChdtYXhfY29uY3VycmVudF9jb21tYW5kcxgFIAEoDRIeChZvZmZsaW5lX2J1ZmZlcl9zYW1wbGVzGAYgASgNEhQKDHBlcl9jb3JlX2NwdRgHIAEoCCIjCg1DYW5jZWxDb21tYW5kEhIKCmNvbW1hbmRfaWQYASABKAkiQgoQUmVxdWVzdEludmVudG9yeRIuCgVraW5kcxgBIAMoDjIfLmNlbnRyYWwuYWdlbnQudjEuSW52ZW50b3J5S2luZCKeAgoKRGlzY29ubmVjdBIzCgZyZWFzb24YASABKA4yIy5jZW50cmFsLmFnZW50LnYxLkRpc2Nvbm5lY3QuUmVhc29uEg8KB21lc3NhZ2UYAiABKAkSLgoLcmV0cnlfYWZ0ZXIYAyABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24imQEKBlJlYXNvbhIWChJSRUFTT05fVU5TUEVDSUZJRUQQABISCg5SRUFTT05fUkVWT0tFRBABEhMKD1JFQVNPTl9TSFVURE9XThACEhsKF1JFQVNPTl9VUEdSQURFX1JFUVVJUkVEEAMSEwoPUkVBU09OX1JFUExBQ0VEEAQSHAoYUkVBU09OX1JFTkVXX0NFUlRJRklDQVRFEAUiQgoMU2lnbmVkS2V5U2V0Eg8KB2tleV9zZXQYASABKAwSEQoJc2lnbmF0dXJlGAIgASgMEg4KBmtleV9pZBgDIAEoCSKbAQoUQ29tbWFuZFNpZ25pbmdLZXlTZXQSEAoIYWdlbnRfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoBBItCglpc3N1ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjEKBGtleXMYBCADKAsyIy5jZW50cmFsLmFnZW50LnYxLkNvbW1hbmRTaWduaW5nS2V5Is8DCgpBZ2VudEV2ZW50Ei8KBHR5cGUYASABKA4yIS5jZW50cmFsLmFnZW50LnYxLkFnZW50RXZlbnQuVHlwZRIoCgR0aW1lGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIPCgdtZXNzYWdlGAMgASgJEkAKCmF0dHJpYnV0ZXMYBCADKAsyLC5jZW50cmFsLmFnZW50LnYxLkFnZW50RXZlbnQuQXR0cmlidXRlc0VudHJ5GjEKD0F0dHJpYnV0ZXNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIt8BCgRUeXBlEhQKEFRZUEVfVU5TUEVDSUZJRUQQABIXChNUWVBFX1BPTElDWV9DSEFOR0VEEAESDwoLVFlQRV9QQVVTRUQQAhIQCgxUWVBFX1JFU1VNRUQQAxIYChRUWVBFX1JFQk9PVF9SRVFVSVJFRBAEEhcKE1RZUEVfU0VSVklDRV9GQUlMRUQQBRIZChVUWVBFX0RJU0tfQUxNT1NUX0ZVTEwQBhIcChhUWVBFX05FVFdPUktfUk9MTEVEX0JBQ0sQBxIZChVUWVBFX0FHRU5UX1JFU1RBUlRJTkcQCCJBCgxQb2xpY3lSZXBvcnQSMQoGcG9saWN5GAEgASgLMiEuY2VudHJhbC5hZ2VudC52MS5FZmZlY3RpdmVQb2xpY3kiKgoXUmVuZXdDZXJ0aWZpY2F0ZVJlcXVlc3QSDwoHY3NyX2RlchgBIAEoDCJQChhSZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USFwoPY2VydGlmaWNhdGVfZGVyGAEgASgMEhsKE2NhX2NlcnRpZmljYXRlc19kZXIYAiADKAwynwIKDEFnZW50U2VydmljZRJPCgdDb25uZWN0Eh4uY2VudHJhbC5hZ2VudC52MS5BZ2VudE1lc3NhZ2UaIC5jZW50cmFsLmFnZW50LnYxLkNlbnRyYWxNZXNzYWdlKAEwARJTCg1BdHRhY2hTZXNzaW9uEh4uY2VudHJhbC5hZ2VudC52MS5TZXNzaW9uRnJhbWUaHi5jZW50cmFsLmFnZW50LnYxLlNlc3Npb25GcmFtZSgBMAESaQoQUmVuZXdDZXJ0aWZpY2F0ZRIpLmNlbnRyYWwuYWdlbnQudjEuUmVuZXdDZXJ0aWZpY2F0ZVJlcXVlc3QaKi5jZW50cmFsLmFnZW50LnYxLlJlbmV3Q2VydGlmaWNhdGVSZXNwb25zZULCAQoUY29tLmNlbnRyYWwuYWdlbnQudjFCCkFnZW50UHJvdG9QAVo8Z2l0aHViLmNvbS9TaGFhbGFuMTUvY2VudHJhbC9nZW4vZ28vY2VudHJhbC9hZ2VudC92MTthZ2VudHYxogIDQ0FYqgIQQ2VudHJhbC5BZ2VudC5WMcoCEENlbnRyYWxcQWdlbnRcVjHiAhxDZW50cmFsXEFnZW50XFYxXEdQQk1ldGFkYXRh6gISQ2VudHJhbDo6QWdlbnQ6OlYxYgZwcm90bzM", [file_central_agent_v1_command, file_central_agent_v1_enrollment, file_central_agent_v1_host, file_central_agent_v1_policy, file_central_agent_v1_session, file_central_agent_v1_system, file_central_agent_v1_telemetry, file_google_protobuf_duration, file_google_protobuf_timestamp]);
 
 /**
  * AgentMessage is sent from the agent to Central on the control stream.
@@ -139,9 +139,9 @@ export type CentralMessage = Message<"central.agent.v1.CentralMessage"> & {
     case: "disconnect";
   } | {
     /**
-     * @generated from field: central.agent.v1.CommandSigningKeys signing_keys = 7;
+     * @generated from field: central.agent.v1.SignedKeySet signing_keys = 7;
      */
-    value: CommandSigningKeys;
+    value: SignedKeySet;
     case: "signingKeys";
   } | { case: undefined; value?: undefined };
 };
@@ -235,11 +235,12 @@ export type HelloAck = Message<"central.agent.v1.HelloAck"> & {
   config?: AgentConfig | undefined;
 
   /**
-   * Current command-signing keys (may include a new key during rotation).
+   * Current command-signing key set, signed by a key the agent already trusts. Present when the
+   * set changed since enrollment (rotation); the agent forwards it to its helper.
    *
-   * @generated from field: repeated central.agent.v1.CommandSigningKey signing_keys = 4;
+   * @generated from field: central.agent.v1.SignedKeySet signing_keys = 4;
    */
-  signingKeys: CommandSigningKey[];
+  signingKeys?: SignedKeySet | undefined;
 
   /**
    * Minimum agent version Central supports; older agents should upgrade.
@@ -467,23 +468,79 @@ export const Disconnect_ReasonSchema: GenEnum<Disconnect_Reason> = /*@__PURE__*/
   enumDesc(file_central_agent_v1_agent, 8, 0);
 
 /**
- * CommandSigningKeys replaces the set of accepted command-signing keys (key rotation).
+ * SignedKeySet rotates the command-signing keys the agent accepts.
  *
- * @generated from message central.agent.v1.CommandSigningKeys
+ * The network-facing agent process is not trusted to change the helper's trust anchors, so a
+ * new key set is only accepted when it is signed by a key the helper already trusts:
+ *   Ed25519.Verify(trusted_key(key_id), "central-keyset-v1" || 0x00 || key_set, signature)
+ * and the decoded set's agent_id matches and its version is greater than the stored version.
+ * The initial key set comes from AgentCredentials at enrollment (performed by root).
+ *
+ * @generated from message central.agent.v1.SignedKeySet
  */
-export type CommandSigningKeys = Message<"central.agent.v1.CommandSigningKeys"> & {
+export type SignedKeySet = Message<"central.agent.v1.SignedKeySet"> & {
   /**
-   * @generated from field: repeated central.agent.v1.CommandSigningKey keys = 1;
+   * Serialized CommandSigningKeySet.
+   *
+   * @generated from field: bytes key_set = 1;
+   */
+  keySet: Uint8Array;
+
+  /**
+   * @generated from field: bytes signature = 2;
+   */
+  signature: Uint8Array;
+
+  /**
+   * ID of the currently trusted key that produced the signature.
+   *
+   * @generated from field: string key_id = 3;
+   */
+  keyId: string;
+};
+
+/**
+ * Describes the message central.agent.v1.SignedKeySet.
+ * Use `create(SignedKeySetSchema)` to create a new message.
+ */
+export const SignedKeySetSchema: GenMessage<SignedKeySet> = /*@__PURE__*/
+  messageDesc(file_central_agent_v1_agent, 9);
+
+/**
+ * CommandSigningKeySet is the complete list of accepted command-signing keys.
+ *
+ * @generated from message central.agent.v1.CommandSigningKeySet
+ */
+export type CommandSigningKeySet = Message<"central.agent.v1.CommandSigningKeySet"> & {
+  /**
+   * @generated from field: string agent_id = 1;
+   */
+  agentId: string;
+
+  /**
+   * Monotonically increasing; older or equal versions are ignored.
+   *
+   * @generated from field: uint64 version = 2;
+   */
+  version: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp issued_at = 3;
+   */
+  issuedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: repeated central.agent.v1.CommandSigningKey keys = 4;
    */
   keys: CommandSigningKey[];
 };
 
 /**
- * Describes the message central.agent.v1.CommandSigningKeys.
- * Use `create(CommandSigningKeysSchema)` to create a new message.
+ * Describes the message central.agent.v1.CommandSigningKeySet.
+ * Use `create(CommandSigningKeySetSchema)` to create a new message.
  */
-export const CommandSigningKeysSchema: GenMessage<CommandSigningKeys> = /*@__PURE__*/
-  messageDesc(file_central_agent_v1_agent, 9);
+export const CommandSigningKeySetSchema: GenMessage<CommandSigningKeySet> = /*@__PURE__*/
+  messageDesc(file_central_agent_v1_agent, 10);
 
 /**
  * AgentEvent is a notable change on the host.
@@ -519,7 +576,7 @@ export type AgentEvent = Message<"central.agent.v1.AgentEvent"> & {
  * Use `create(AgentEventSchema)` to create a new message.
  */
 export const AgentEventSchema: GenMessage<AgentEvent> = /*@__PURE__*/
-  messageDesc(file_central_agent_v1_agent, 10);
+  messageDesc(file_central_agent_v1_agent, 11);
 
 /**
  * Type classifies the event.
@@ -589,7 +646,7 @@ export enum AgentEvent_Type {
  * Describes the enum central.agent.v1.AgentEvent.Type.
  */
 export const AgentEvent_TypeSchema: GenEnum<AgentEvent_Type> = /*@__PURE__*/
-  enumDesc(file_central_agent_v1_agent, 10, 0);
+  enumDesc(file_central_agent_v1_agent, 11, 0);
 
 /**
  * PolicyReport carries the effective owner policy after it changed.
@@ -608,7 +665,7 @@ export type PolicyReport = Message<"central.agent.v1.PolicyReport"> & {
  * Use `create(PolicyReportSchema)` to create a new message.
  */
 export const PolicyReportSchema: GenMessage<PolicyReport> = /*@__PURE__*/
-  messageDesc(file_central_agent_v1_agent, 11);
+  messageDesc(file_central_agent_v1_agent, 12);
 
 /**
  * RenewCertificateRequest carries a new CSR (ECDSA P-256).
@@ -627,7 +684,7 @@ export type RenewCertificateRequest = Message<"central.agent.v1.RenewCertificate
  * Use `create(RenewCertificateRequestSchema)` to create a new message.
  */
 export const RenewCertificateRequestSchema: GenMessage<RenewCertificateRequest> = /*@__PURE__*/
-  messageDesc(file_central_agent_v1_agent, 12);
+  messageDesc(file_central_agent_v1_agent, 13);
 
 /**
  * RenewCertificateResponse carries the new certificate.
@@ -651,7 +708,7 @@ export type RenewCertificateResponse = Message<"central.agent.v1.RenewCertificat
  * Use `create(RenewCertificateResponseSchema)` to create a new message.
  */
 export const RenewCertificateResponseSchema: GenMessage<RenewCertificateResponse> = /*@__PURE__*/
-  messageDesc(file_central_agent_v1_agent, 13);
+  messageDesc(file_central_agent_v1_agent, 14);
 
 /**
  * AgentService is used by enrolled agents.

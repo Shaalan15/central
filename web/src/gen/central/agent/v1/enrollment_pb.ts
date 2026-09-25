@@ -248,8 +248,9 @@ export type AgentCredentials = Message<"central.agent.v1.AgentCredentials"> & {
   caCertificatesDer: Uint8Array[];
 
   /**
-   * Keys Central uses to sign commands. The agent (and its privileged helper) must reject any
-   * command not signed by one of these keys.
+   * Keys Central uses to sign commands (key set version 1). The enrollment command (run as
+   * root) writes them to the helper's root-owned trust store; the helper rejects any command
+   * not signed by a trusted key. Later rotations arrive as SignedKeySet messages.
    *
    * @generated from field: repeated central.agent.v1.CommandSigningKey command_signing_keys = 5;
    */

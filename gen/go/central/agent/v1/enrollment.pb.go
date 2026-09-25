@@ -425,8 +425,9 @@ type AgentCredentials struct {
 	// DER-encoded CA certificates (issuing CA first). The agent trusts only these for the
 	// agent endpoint from now on.
 	CaCertificatesDer [][]byte `protobuf:"bytes,4,rep,name=ca_certificates_der,json=caCertificatesDer,proto3" json:"ca_certificates_der,omitempty"`
-	// Keys Central uses to sign commands. The agent (and its privileged helper) must reject any
-	// command not signed by one of these keys.
+	// Keys Central uses to sign commands (key set version 1). The enrollment command (run as
+	// root) writes them to the helper's root-owned trust store; the helper rejects any command
+	// not signed by a trusted key. Later rotations arrive as SignedKeySet messages.
 	CommandSigningKeys []*CommandSigningKey `protobuf:"bytes,5,rep,name=command_signing_keys,json=commandSigningKeys,proto3" json:"command_signing_keys,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
