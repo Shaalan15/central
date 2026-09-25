@@ -19,6 +19,10 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/Shaalan15/central/gen/go/central/api/v1/apiv1connect"
+	"github.com/Shaalan15/central/server/internal/api"
+	"github.com/Shaalan15/central/server/internal/audit"
+	"github.com/Shaalan15/central/server/internal/auth"
+	"github.com/Shaalan15/central/server/internal/authz"
 	"github.com/Shaalan15/central/server/internal/bus"
 	"github.com/Shaalan15/central/server/internal/config"
 	"github.com/Shaalan15/central/server/internal/crypto"
@@ -48,10 +52,13 @@ type App struct {
 	Cookies httpx.Cookies
 	Started time.Time
 
+	Deps *api.Deps
+
 	trusted []netip.Prefix
 	webui   *webui.Handler
 
 	storeReadyOnce sync.Once
+	bgCtx          context.Context
 }
 
 // New initializes an App: data directory, master key, storage (if configured) and setup state.
@@ -93,6 +100,18 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, build Build)
 	if err := a.Setup.Init(ctx); err != nil {
 		return nil, err
 	}
+	var extraOrigins []string
+	if cfg.Dev {
+		extraOrigins = []string{"http://localhost:4200", "http://localhost:8080"}
+	}
+	a.Deps = &api.Deps{
+		Config: cfg, Log: log, Holder: a.Holder, Keyring: kr, Cookies: a.Cookies, Setup: a.Setup,
+		Sessions: auth.NewSessions(a.Holder), Resolver: authz.NewResolver(a.Holder),
+		Audit: audit.NewRecorder(a.Holder, log), Version: build.Version, Commit: build.Commit, Started: a.Started,
+	}
+	a.Deps.Passkeys = auth.NewPasskeys(a.Holder, a.Deps.PublicURL, extraOrigins)
+	a.Deps.Init()
+	a.bgCtx = ctx
 	if st := a.Holder.Get(); st != nil {
 		a.onStoreReady(st)
 	}
@@ -126,27 +145,62 @@ func loadKeyring(cfg *config.Config, log *slog.Logger) (*crypto.Keyring, error) 
 func (a *App) onStoreReady(st *store.Store) {
 	a.storeReadyOnce.Do(func() {
 		_ = st
-		// Store-dependent services (auth, fleet index, gateway) are started here in later
-		// milestones.
+		go a.housekeeping(a.bgCtx)
 	})
+}
+
+// housekeeping runs periodic maintenance (expired sessions).
+func (a *App) housekeeping(ctx context.Context) {
+	t := time.NewTicker(10 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if a.Deps == nil || !a.Setup.Complete() {
+				continue
+			}
+			if n, err := a.Deps.Sessions.DeleteExpired(ctx); err != nil {
+				a.Log.Warn("housekeeping: deleting expired sessions failed", "error", err)
+			} else if n > 0 {
+				a.Log.Debug("housekeeping: deleted expired sessions", "count", n)
+			}
+		}
+	}
 }
 
 // Handler builds the HTTP handler for the UI/API listener.
 func (a *App) Handler() http.Handler {
-	api := http.NewServeMux()
+	mux := http.NewServeMux()
 	opts := []connect.HandlerOption{
 		connect.WithReadMaxBytes(4 << 20),
 		connect.WithCompressMinBytes(1024),
+		connect.WithInterceptors(&api.Guard{D: a.Deps}),
 	}
+	d := a.Deps
 
 	setupSvc := &setup.Service{
 		State: a.Setup, Config: a.Config, Keyring: a.Keyring, Holder: a.Holder,
 		Cookies: a.Cookies, Log: a.Log, Version: a.Build.Version,
 		OnStoreReady: a.onStoreReady,
+		OnComplete: func(ctx context.Context, _ *store.Store, orgID, userID string) {
+			_ = d.Audit.Record(ctx, audit.Event{
+				OrgID: orgID, Actor: store.PrincipalRef{Kind: store.PrincipalSystem, ID: "setup", Display: "setup wizard"},
+				Action: "setup.completed", TargetType: "user", TargetID: userID,
+			})
+		},
 	}
-	api.Handle(apiv1connect.NewSetupServiceHandler(setupSvc, opts...))
+	mux.Handle(apiv1connect.NewSetupServiceHandler(setupSvc, opts...))
+	mux.Handle(apiv1connect.NewAuthServiceHandler(&api.AuthService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewOrganizationServiceHandler(&api.OrgService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewMemberServiceHandler(&api.MemberService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewRoleServiceHandler(&api.RoleService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewApiKeyServiceHandler(&api.APIKeyService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewAuditServiceHandler(&api.AuditService{D: d}, opts...))
+	mux.Handle(apiv1connect.NewSystemServiceHandler(&api.SystemService{D: d}, opts...))
 
-	apiHandler := httpx.Chain(api,
+	apiHandler := httpx.Chain(mux,
 		httpx.NoStore(),
 		httpx.SameOrigin(a.allowedOrigins),
 		httpx.MaxBytes(8<<20),

@@ -61,11 +61,13 @@ var (
 	UserSchema = Schema[*User]{
 		SchemaInfo: SchemaInfo{
 			Name:    "users",
-			Fields:  []Field{str("email", 320)},
-			Indexes: []Index{idx("email_unique", true, "email")},
+			Fields:  []Field{str("email", 320), str("webauthn_id", 64)},
+			Indexes: []Index{idx("email_unique", true, "email"), idx("webauthn", false, "webauthn_id")},
 		},
-		New:     func() *User { return &User{} },
-		IndexOf: func(u *User) map[string]any { return map[string]any{"email": u.Email} },
+		New: func() *User { return &User{} },
+		IndexOf: func(u *User) map[string]any {
+			return map[string]any{"email": u.Email, "webauthn_id": hex.EncodeToString(u.WebAuthnID)}
+		},
 	}
 	MembershipSchema = Schema[*Membership]{
 		SchemaInfo: SchemaInfo{

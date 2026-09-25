@@ -13,6 +13,9 @@ require (
 
 require (
 	github.com/appwrite/sdk-for-go/v7 v7.4.0 // indirect
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
+	github.com/go-webauthn/webauthn v0.18.2 // indirect
+	github.com/pquerna/otp v1.5.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect

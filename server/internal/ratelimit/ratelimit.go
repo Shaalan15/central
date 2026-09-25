@@ -70,6 +70,18 @@ func (k *Keyed) Allow(key string) bool {
 	return e.lim.AllowN(now, 1)
 }
 
+// Blocked reports whether key has no tokens left, without consuming one. Use it with Allow to
+// count only failures: check Blocked before an attempt, call Allow after a failed one.
+func (k *Keyed) Blocked(key string) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	e, ok := k.buckets[key]
+	if !ok {
+		return false
+	}
+	return e.lim.TokensAt(k.now()) < 1
+}
+
 // Reset forgets a key (e.g. after a successful login).
 func (k *Keyed) Reset(key string) {
 	k.mu.Lock()
