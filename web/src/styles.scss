@@ -1,0 +1,44 @@
+@use '@angular/material' as mat;
+
+// Material 3 theme. Colors follow the OS light/dark preference via `color-scheme`;
+// the app shell can force a scheme by setting `color-scheme` on <html>.
+html {
+  color-scheme: light dark;
+  height: 100%;
+
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      typography: (
+        plain-family: 'Inter Variable',
+        brand-family: 'Inter Variable',
+      ),
+      density: -2,
+    )
+  );
+}
+
+html.theme-light {
+  color-scheme: light;
+}
+
+html.theme-dark {
+  color-scheme: dark;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  -webkit-font-smoothing: antialiased;
+}
+
+// Tabular numerals keep live metrics from jittering as values change.
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
