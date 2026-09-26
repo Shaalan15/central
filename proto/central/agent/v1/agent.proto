@@ -1,0 +1,224 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "central/agent/v1/command.proto";
+import "central/agent/v1/enrollment.proto";
+import "central/agent/v1/host.proto";
+import "central/agent/v1/policy.proto";
+import "central/agent/v1/session.proto";
+import "central/agent/v1/system.proto";
+import "central/agent/v1/telemetry.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// AgentService is used by enrolled agents.
+//
+// Transport: gRPC over HTTP/2 and TLS 1.3 to the agent endpoint (default :9443). The agent
+// presents its client certificate and trusts only the CA certificates it received at
+// enrollment. Central checks the certificate's agent ID, serial and the agent's status on
+// every handshake and every RPC; revoked agents are disconnected immediately.
+//
+// Connection management (agent side):
+//  - Keep exactly one Connect stream open. Reconnect with exponential backoff (1s doubling
+//    to 5m) with full jitter; reset the backoff after a stream has been healthy for 5 minutes.
+//  - Send HTTP/2 PINGs every 30s (timeout 15s) and a Heartbeat every heartbeat_interval.
+//  - Honour HTTPS_PROXY/NO_PROXY via HTTP CONNECT.
+service AgentService {
+  // Connect is the long-lived bidirectional control stream. The first AgentMessage must be
+  // `hello`; Central answers with `hello_ack` before anything else. Only one stream per agent
+  // is allowed: a new stream replaces (and closes) the previous one.
+  rpc Connect(stream AgentMessage) returns (stream CentralMessage);
+
+  // AttachSession carries one interactive session (terminal, journal follow, file transfer)
+  // that Central requested via a signed command with a SessionBinding. The first frame from the
+  // agent must be `attach`.
+  rpc AttachSession(stream SessionFrame) returns (stream SessionFrame);
+
+  // RenewCertificate exchanges a fresh CSR for a new client certificate. Call it when the
+  // current certificate has passed ~2/3 of its lifetime. The agent should generate a new key
+  // for each renewal (key rotation) and switch to it after a successful response.
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
+}
+
+// AgentMessage is sent from the agent to Central on the control stream.
+message AgentMessage {
+  oneof message {
+    Hello hello = 1;
+    Heartbeat heartbeat = 2;
+    MetricsReport metrics = 3;
+    InventoryReport inventory = 4;
+    CommandUpdate command_update = 5;
+    AgentEvent event = 6;
+    PolicyReport policy = 7;
+  }
+}
+
+// CentralMessage is sent from Central to the agent on the control stream.
+message CentralMessage {
+  oneof message {
+    HelloAck hello_ack = 1;
+    SignedCommand command = 2;
+    CancelCommand cancel = 3;
+    AgentConfig config = 4;
+    RequestInventory request_inventory = 5;
+    Disconnect disconnect = 6;
+    SignedKeySet signing_keys = 7;
+  }
+}
+
+// Hello opens a control stream.
+message Hello {
+  // Semantic version of the agent.
+  string agent_version = 1;
+  // Agent protocol version (currently 1).
+  uint32 protocol_version = 2;
+  // Optional features the agent supports, e.g. "sessions.v1", "network.rollback.v1".
+  repeated string features = 3;
+  HostFacts facts = 4;
+  EffectivePolicy policy = 5;
+  // Agent's current time, used by Central to detect clock skew.
+  google.protobuf.Timestamp agent_time = 6;
+  // Commands the agent is still executing from a previous stream (it keeps running them and
+  // will report their results on this stream).
+  repeated string running_command_ids = 7;
+}
+
+// HelloAck accepts a control stream.
+message HelloAck {
+  string agent_id = 1;
+  google.protobuf.Timestamp server_time = 2;
+  AgentConfig config = 3;
+  // Current command-signing key set, signed by a key the agent already trusts. Present when the
+  // set changed since enrollment (rotation); the agent forwards it to its helper.
+  SignedKeySet signing_keys = 4;
+  // Minimum agent version Central supports; older agents should upgrade.
+  string min_agent_version = 5;
+}
+
+// Heartbeat proves liveness when no other traffic flows.
+message Heartbeat {
+  google.protobuf.Timestamp time = 1;
+  // Commands currently running.
+  uint32 running_commands = 2;
+}
+
+// AgentConfig tunes agent behaviour. Central may send a new one at any time.
+message AgentConfig {
+  // How often to send MetricsSample (default 15s, min 5s, max 5m).
+  google.protobuf.Duration metrics_interval = 1;
+  // How often to recollect inventory even without change notifications (default 6h).
+  google.protobuf.Duration inventory_interval = 2;
+  // How often to send Heartbeat when idle (default 30s).
+  google.protobuf.Duration heartbeat_interval = 3;
+  // Maximum command output retained/streamed per command (default 4 MiB).
+  uint64 max_output_bytes = 4;
+  // Maximum commands executed concurrently (default 4). Package operations are always
+  // serialized regardless of this value.
+  uint32 max_concurrent_commands = 5;
+  // Samples to buffer while disconnected (default 240 = 1h at 15s).
+  uint32 offline_buffer_samples = 6;
+  // Include per-core CPU in samples.
+  bool per_core_cpu = 7;
+}
+
+// CancelCommand asks the agent to stop a running command (SIGTERM, then SIGKILL after 10s).
+message CancelCommand {
+  string command_id = 1;
+}
+
+// RequestInventory asks for fresh inventory of the given kinds (empty = all).
+message RequestInventory {
+  repeated InventoryKind kinds = 1;
+}
+
+// Disconnect tells the agent why Central is closing the stream.
+message Disconnect {
+  // Reason explains why Central is closing the stream.
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    // The agent was revoked: delete credentials and stop (do not reconnect).
+    REASON_REVOKED = 1;
+    // Central is shutting down or rebalancing: reconnect after `retry_after`.
+    REASON_SHUTDOWN = 2;
+    // The agent version is below min_agent_version.
+    REASON_UPGRADE_REQUIRED = 3;
+    // A newer stream for the same agent replaced this one.
+    REASON_REPLACED = 4;
+    // The certificate is about to expire: renew, then reconnect.
+    REASON_RENEW_CERTIFICATE = 5;
+  }
+  Reason reason = 1;
+  string message = 2;
+  google.protobuf.Duration retry_after = 3;
+}
+
+// SignedKeySet rotates the command-signing keys the agent accepts.
+//
+// The network-facing agent process is not trusted to change the helper's trust anchors, so a
+// new key set is only accepted when it is signed by a key the helper already trusts:
+//   Ed25519.Verify(trusted_key(key_id), "central-keyset-v1" || 0x00 || key_set, signature)
+// and the decoded set's agent_id matches and its version is greater than the stored version.
+// The initial key set comes from AgentCredentials at enrollment (performed by root).
+message SignedKeySet {
+  // Serialized CommandSigningKeySet.
+  bytes key_set = 1;
+  bytes signature = 2;
+  // ID of the currently trusted key that produced the signature.
+  string key_id = 3;
+}
+
+// CommandSigningKeySet is the complete list of accepted command-signing keys.
+message CommandSigningKeySet {
+  string agent_id = 1;
+  // Monotonically increasing; older or equal versions are ignored.
+  uint64 version = 2;
+  google.protobuf.Timestamp issued_at = 3;
+  repeated CommandSigningKey keys = 4;
+}
+
+// AgentEvent is a notable change on the host.
+message AgentEvent {
+  // Type classifies the event.
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    // The owner changed /etc/central-agent/policy.toml (a PolicyReport follows).
+    TYPE_POLICY_CHANGED = 1;
+    // The owner paused remote operations.
+    TYPE_PAUSED = 2;
+    TYPE_RESUMED = 3;
+    TYPE_REBOOT_REQUIRED = 4;
+    // A systemd unit entered the failed state.
+    TYPE_SERVICE_FAILED = 5;
+    // A filesystem crossed 90% usage.
+    TYPE_DISK_ALMOST_FULL = 6;
+    // A pending network/firewall change was rolled back.
+    TYPE_NETWORK_ROLLED_BACK = 7;
+    // The agent is about to restart (upgrade, config change).
+    TYPE_AGENT_RESTARTING = 8;
+  }
+  Type type = 1;
+  google.protobuf.Timestamp time = 2;
+  string message = 3;
+  // Event-specific key/value details (unit name, mountpoint, ...). No secrets.
+  map<string, string> attributes = 4;
+}
+
+// PolicyReport carries the effective owner policy after it changed.
+message PolicyReport {
+  EffectivePolicy policy = 1;
+}
+
+// RenewCertificateRequest carries a new CSR (ECDSA P-256).
+message RenewCertificateRequest {
+  bytes csr_der = 1;
+}
+
+// RenewCertificateResponse carries the new certificate.
+message RenewCertificateResponse {
+  bytes certificate_der = 1;
+  repeated bytes ca_certificates_der = 2;
+}

@@ -1,0 +1,20 @@
+# Code generation for the Protobuf contracts. Run via `make gen`.
+# Only local plugins are used so generation works offline and is reproducible.
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/Shaalan15/central/gen/go
+plugins:
+  - local: bin/protoc-gen-go
+    out: gen/go
+    opt: paths=source_relative
+  - local: bin/protoc-gen-connect-go
+    out: gen/go
+    opt: paths=source_relative
+  - local: web/node_modules/.bin/protoc-gen-es
+    out: web/src/gen
+    opt:
+      - target=ts
+      - import_extension=none

@@ -1,0 +1,60 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+// Conventions for the Central UI / public API:
+//  - Transport: ConnectRPC (JSON or binary) under /api/. Browser clients authenticate with the
+//    session cookie and must send the `X-CSRF-Token` header on every call; automation uses
+//    `Authorization: Bearer <api key>`.
+//  - All resources are scoped to the caller's active organization. IDs from other
+//    organizations behave as NOT_FOUND.
+//  - Errors use Connect codes: UNAUTHENTICATED (no/expired session), PERMISSION_DENIED (missing
+//    permission), FAILED_PRECONDITION with reason "step_up_required" (recent MFA needed),
+//    INVALID_ARGUMENT, NOT_FOUND, ALREADY_EXISTS, RESOURCE_EXHAUSTED (rate limit/quota).
+//  - Secrets returned by the API (enrollment keys, API keys, recovery codes, invite links) are
+//    shown exactly once and never retrievable again.
+
+// PageRequest is the standard pagination input.
+message PageRequest {
+  // Maximum items per page (default 50, max 500).
+  uint32 page_size = 1;
+  // Opaque token from a previous PageResponse.
+  string page_token = 2;
+}
+
+// PageResponse is the standard pagination output.
+message PageResponse {
+  // Empty when there are no more pages.
+  string next_page_token = 1;
+  // Total matching items when cheaply known, else 0.
+  uint64 total_size = 2;
+}
+
+// PrincipalRef is a compact reference to a user, API key, agent or the system.
+message PrincipalRef {
+  // Kind identifies the principal type.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_USER = 1;
+    KIND_API_KEY = 2;
+    KIND_AGENT = 3;
+    KIND_SYSTEM = 4;
+  }
+  Kind kind = 1;
+  string id = 2;
+  // Display name or email at the time of the reference.
+  string display = 3;
+}
+
+// AgentScope restricts a role binding, API key or job to a subset of agents.
+message AgentScope {
+  // Applies to every agent in the organization (ignores the fields below).
+  bool all_agents = 1;
+  // Agents in any of these groups.
+  repeated string group_ids = 2;
+  // Agents carrying all of these tags.
+  repeated string tags = 3;
+}

@@ -1,0 +1,159 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/duration.proto";
+
+// NetworkInterface is one network link and its addresses.
+message NetworkInterface {
+  string name = 1;
+  // "ether", "loopback", "bridge", "vlan", "bond", "wireguard", "tun", ...
+  string type = 2;
+  string mac_address = 3;
+  uint32 mtu = 4;
+  // Operational state: "up", "down", "unknown".
+  string oper_state = 5;
+  // Addresses in CIDR notation.
+  repeated string addresses = 6;
+  // Link speed in Mbit/s, 0 if unknown.
+  uint32 speed_mbps = 7;
+  // Address assigned by DHCP (vs static).
+  bool dhcp = 8;
+}
+
+// Route is one routing table entry.
+message Route {
+  // Destination in CIDR notation, "default" for the default route.
+  string destination = 1;
+  string gateway = 2;
+  string interface = 3;
+  uint32 metric = 4;
+  // Routing protocol/source, e.g. "dhcp", "static", "kernel".
+  string protocol = 5;
+}
+
+// ListeningSocket is a TCP/UDP socket in LISTEN (or bound UDP) state.
+message ListeningSocket {
+  // "tcp", "tcp6", "udp", "udp6".
+  string protocol = 1;
+  string address = 2;
+  uint32 port = 3;
+  uint32 pid = 4;
+  string process = 5;
+}
+
+// NetworkState describes host networking.
+message NetworkState {
+  repeated NetworkInterface interfaces = 1;
+  repeated Route routes = 2;
+  // Resolver nameservers in effect.
+  repeated string dns_servers = 3;
+  repeated string dns_search = 4;
+  repeated ListeningSocket listening = 5;
+  // Which configuration system manages the host's network.
+  NetworkBackend backend = 6;
+  // Raw configuration files for the active backend (path -> contents), for display and as the
+  // basis for NetworkApply. Secrets (Wi-Fi PSKs, WireGuard private keys) are redacted.
+  map<string, string> config_files = 7;
+}
+
+// NetworkBackend is the host's network configuration system.
+enum NetworkBackend {
+  NETWORK_BACKEND_UNSPECIFIED = 0;
+  // Ubuntu netplan (/etc/netplan/*.yaml).
+  NETWORK_BACKEND_NETPLAN = 1;
+  // Debian ifupdown (/etc/network/interfaces).
+  NETWORK_BACKEND_IFUPDOWN = 2;
+  NETWORK_BACKEND_NETWORK_MANAGER = 3;
+  NETWORK_BACKEND_SYSTEMD_NETWORKD = 4;
+}
+
+// NetworkGet returns the current network state. Capability: NETWORK_READ.
+message NetworkGet {}
+
+// NetworkApply applies a new network configuration with automatic rollback (Phase 1b).
+// Capability: NETWORK_MANAGE.
+//
+// Semantics (commit-confirm): the agent backs up the current configuration, writes the new
+// files, validates them (e.g. `netplan generate`), applies them, and then waits up to
+// `confirm_timeout` for a NetworkConfirm command carrying the same `change_id`. If none arrives
+// (for example because the change broke connectivity to Central), the agent restores the
+// backup and re-applies it. The helper performs the rollback on its own timer, independent of
+// the network process.
+message NetworkApply {
+  // Unique ID for this change, echoed by NetworkConfirm.
+  string change_id = 1;
+  // Files to write (absolute path -> contents). Paths must belong to the active backend's
+  // configuration directory.
+  map<string, string> files = 2;
+  // Files to delete (absolute paths within the backend's configuration directory).
+  repeated string delete_files = 3;
+  // How long to wait for confirmation. Default 120s, min 30s, max 600s.
+  google.protobuf.Duration confirm_timeout = 4;
+}
+
+// NetworkConfirm keeps a pending NetworkApply. Capability: NETWORK_MANAGE.
+message NetworkConfirm {
+  string change_id = 1;
+}
+
+// FirewallRule is one ufw rule.
+message FirewallRule {
+  // Rule number as shown by `ufw status numbered`.
+  uint32 number = 1;
+  // Human-readable rule, e.g. "22/tcp ALLOW IN Anywhere".
+  string text = 2;
+  // "allow", "deny", "reject", "limit".
+  string action = 3;
+  // "in", "out".
+  string direction = 4;
+  // Port or port range, e.g. "22", "8000:8100".
+  string port = 5;
+  // "tcp", "udp", or empty for any.
+  string protocol = 6;
+  // Source address/CIDR, "any" if unrestricted.
+  string from = 7;
+  // Destination address/CIDR, "any" if unrestricted.
+  string to = 8;
+  bool ipv6 = 9;
+  string comment = 10;
+}
+
+// FirewallState describes the host firewall (ufw).
+message FirewallState {
+  // ufw is installed.
+  bool installed = 1;
+  // ufw is active.
+  bool active = 2;
+  // Default policies, e.g. "deny" (incoming), "allow" (outgoing).
+  string default_incoming = 3;
+  string default_outgoing = 4;
+  repeated FirewallRule rules = 5;
+}
+
+// FirewallGet returns the firewall state. Capability: NETWORK_READ.
+message FirewallGet {}
+
+// FirewallApply changes firewall rules with commit-confirm rollback (Phase 1b).
+// Capability: FIREWALL_MANAGE. Same confirm semantics as NetworkApply, using NetworkConfirm.
+message FirewallApply {
+  string change_id = 1;
+  // Change is one firewall modification.
+  message Change {
+    oneof change {
+      // Add a rule, e.g. action "allow", port "443", protocol "tcp".
+      FirewallRule add = 1;
+      // Delete a rule by its exact text as returned in FirewallRule.text.
+      string delete_rule_text = 2;
+      // Enable (true) or disable (false) ufw.
+      bool set_enabled = 3;
+      // Set the default incoming policy ("allow", "deny", "reject").
+      string set_default_incoming = 4;
+    }
+  }
+  repeated Change changes = 2;
+  google.protobuf.Duration confirm_timeout = 3;
+}

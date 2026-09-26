@@ -1,0 +1,151 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+// SetupService drives the first-run wizard. Every RPC except GetSetupStatus and BeginSetup
+// requires the setup cookie obtained with the one-time setup token (printed to the server log
+// and written to <data dir>/setup-token). All RPCs fail with FAILED_PRECONDITION once setup is
+// complete.
+service SetupService {
+  // GetSetupStatus reports whether the instance still needs setup. Unauthenticated.
+  rpc GetSetupStatus(GetSetupStatusRequest) returns (GetSetupStatusResponse);
+  // BeginSetup exchanges the setup token for a short-lived setup cookie. Rate limited.
+  rpc BeginSetup(BeginSetupRequest) returns (BeginSetupResponse);
+  // TestDatabase checks connectivity, version and API key scopes without saving anything.
+  rpc TestDatabase(TestDatabaseRequest) returns (TestDatabaseResponse);
+  // SaveDatabase stores the database configuration (encrypted) and runs schema migrations.
+  rpc SaveDatabase(SaveDatabaseRequest) returns (SaveDatabaseResponse);
+  // SaveEndpoints stores the public UI URL and the URL agents use to reach Central.
+  rpc SaveEndpoints(SaveEndpointsRequest) returns (SaveEndpointsResponse);
+  // CreateOwner creates the first organization and its owner account. The owner must enroll
+  // MFA on first sign-in before anything else is possible.
+  rpc CreateOwner(CreateOwnerRequest) returns (CreateOwnerResponse);
+}
+
+// SetupStep is one stage of the wizard.
+enum SetupStep {
+  SETUP_STEP_UNSPECIFIED = 0;
+  SETUP_STEP_DATABASE = 1;
+  SETUP_STEP_ENDPOINTS = 2;
+  SETUP_STEP_OWNER = 3;
+  SETUP_STEP_COMPLETE = 4;
+}
+
+// GetSetupStatusRequest is empty.
+message GetSetupStatusRequest {}
+
+// GetSetupStatusResponse describes setup progress.
+message GetSetupStatusResponse {
+  // Setup has finished; the wizard is closed.
+  bool complete = 1;
+  // Next step to perform.
+  SetupStep next_step = 2;
+  // The database is configured through environment/config file, so the wizard skips it.
+  bool database_preconfigured = 3;
+  // Server version.
+  string version = 4;
+}
+
+// BeginSetupRequest carries the one-time setup token.
+message BeginSetupRequest {
+  string setup_token = 1;
+}
+
+// BeginSetupResponse is empty; the setup cookie is set on success.
+message BeginSetupResponse {
+  SetupStep next_step = 1;
+}
+
+// AppwriteDeployment says where Appwrite runs.
+enum AppwriteDeployment {
+  APPWRITE_DEPLOYMENT_UNSPECIFIED = 0;
+  // Appwrite Cloud (https://<region>.cloud.appwrite.io/v1).
+  APPWRITE_DEPLOYMENT_CLOUD = 1;
+  // Self-hosted Appwrite 2.x.
+  APPWRITE_DEPLOYMENT_SELF_HOSTED = 2;
+}
+
+// AppwriteConfig connects Central to an Appwrite 2.x project.
+message AppwriteConfig {
+  AppwriteDeployment deployment = 1;
+  // API endpoint including /v1, e.g. "https://fra.cloud.appwrite.io/v1".
+  string endpoint = 2;
+  string project_id = 3;
+  // Server API key (write-only; never returned). Required scopes are listed in the docs and
+  // verified by TestDatabase.
+  string api_key = 4;
+  // Database ID to use (created if missing and create_database is set). Default "central".
+  string database_id = 5;
+  bool create_database = 6;
+  // Extra PEM CA certificates to trust (self-hosted with a private CA).
+  string ca_bundle_pem = 7;
+}
+
+// DatabaseConfig selects and configures the storage driver. Only Appwrite exists for now.
+message DatabaseConfig {
+  oneof driver {
+    AppwriteConfig appwrite = 1;
+  }
+}
+
+// TestDatabaseRequest carries a candidate configuration.
+message TestDatabaseRequest {
+  DatabaseConfig config = 1;
+}
+
+// TestDatabaseResponse reports the result of a connectivity test.
+message TestDatabaseResponse {
+  bool ok = 1;
+  // Server version reported by the backend, e.g. "2.0.3".
+  string server_version = 2;
+  // The server version is supported (Appwrite >= 2.0).
+  bool version_supported = 3;
+  // API key scopes that are required but missing.
+  repeated string missing_scopes = 4;
+  bool database_exists = 5;
+  // Human-readable error when ok is false. Never includes the API key.
+  string error = 6;
+}
+
+// SaveDatabaseRequest carries the configuration to persist.
+message SaveDatabaseRequest {
+  DatabaseConfig config = 1;
+}
+
+// SaveDatabaseResponse reports migration results.
+message SaveDatabaseResponse {
+  // Schema version after migrations.
+  uint32 schema_version = 1;
+  SetupStep next_step = 2;
+}
+
+// SaveEndpointsRequest carries the externally visible URLs.
+message SaveEndpointsRequest {
+  // Base URL of the web UI, e.g. "https://central.example.com".
+  string public_url = 1;
+  // URL agents connect to, e.g. "https://central.example.com:9443".
+  string agent_url = 2;
+}
+
+// SaveEndpointsResponse is returned after saving endpoints.
+message SaveEndpointsResponse {
+  SetupStep next_step = 1;
+}
+
+// CreateOwnerRequest creates the first account.
+message CreateOwnerRequest {
+  string email = 1;
+  string display_name = 2;
+  // At least 12 characters; checked against a list of common passwords.
+  string password = 3;
+  string organization_name = 4;
+}
+
+// CreateOwnerResponse completes setup.
+message CreateOwnerResponse {
+  string user_id = 1;
+  string organization_id = 2;
+}

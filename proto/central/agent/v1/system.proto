@@ -1,0 +1,138 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/duration.proto";
+
+// PowerAction reboots or powers off the host. Capability: POWER.
+message PowerAction {
+  // Action is the power operation.
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_REBOOT = 1;
+    ACTION_POWEROFF = 2;
+    // Cancel a scheduled (delayed) reboot/poweroff.
+    ACTION_CANCEL = 3;
+  }
+  Action action = 1;
+  // Delay before acting (`shutdown -r +N`), rounded up to whole minutes. Zero means one minute:
+  // the agent always reports success before the host goes down.
+  google.protobuf.Duration delay = 2;
+  // Message broadcast to logged-in users (wall). Max 200 chars, printable only.
+  string message = 3;
+}
+
+// Exec runs a program without a shell. Capability: EXEC.
+//
+// argv[0] must be an absolute path. No shell interpretation happens: to run a shell snippet the
+// caller must explicitly pass ["/bin/sh", "-c", "..."], which the policy may forbid separately.
+message Exec {
+  repeated string argv = 1;
+  // Linux user to run as. Empty means the policy's default run-as user. Must be allowed by the
+  // owner policy (terminal/exec run_as list).
+  string run_as = 2;
+  // Working directory (absolute). Empty means the run-as user's home directory.
+  string working_dir = 3;
+  // Extra environment variables ("KEY=value"). PATH, HOME, USER, LANG are set by the helper.
+  repeated string env = 4;
+  // Data written to stdin, max 1 MiB.
+  bytes stdin = 5;
+  // Kill the process (and its process group) after this duration. Default 5m, max 24h.
+  google.protobuf.Duration timeout = 6;
+}
+
+// ExecResult is the result of Exec. Output is streamed as CommandUpdate.output chunks.
+message ExecResult {
+  int32 exit_code = 1;
+  // Terminated by the timeout.
+  bool timed_out = 2;
+  // Terminated by this signal number, if any.
+  int32 signal = 3;
+}
+
+// TerminalOpen starts an interactive PTY session. Capability: TERMINAL.
+// The agent opens AgentService.AttachSession with the session ID/token from the command.
+message TerminalOpen {
+  // Linux user for the login shell. Must be allowed by the owner policy.
+  string run_as = 1;
+  uint32 cols = 2;
+  uint32 rows = 3;
+  // TERM value, default "xterm-256color".
+  string term = 4;
+  // Idle timeout after which the session is closed. Default 30m, max 12h.
+  google.protobuf.Duration idle_timeout = 5;
+}
+
+// StorageGet returns block devices, filesystems and mounts. Capability: STORAGE_READ.
+message StorageGet {}
+
+// StorageState describes disks and filesystems.
+message StorageState {
+  repeated BlockDevice block_devices = 1;
+  repeated Mount mounts = 2;
+}
+
+// BlockDevice is a disk, partition, LVM volume or similar (from lsblk).
+message BlockDevice {
+  string name = 1;
+  // "disk", "part", "lvm", "crypt", "raid1", "loop", ...
+  string type = 2;
+  uint64 size_bytes = 3;
+  string model = 4;
+  string serial = 5;
+  string fstype = 6;
+  string mountpoint = 7;
+  // Rotational (spinning) disk.
+  bool rotational = 8;
+  // Name of the parent device, empty for top-level disks.
+  string parent = 9;
+}
+
+// Mount is one mounted filesystem.
+message Mount {
+  string device = 1;
+  string mountpoint = 2;
+  string fstype = 3;
+  // Mount options, e.g. ["rw", "relatime"].
+  repeated string options = 4;
+  uint64 size_bytes = 5;
+  uint64 used_bytes = 6;
+  uint64 inodes_total = 7;
+  uint64 inodes_used = 8;
+}
+
+// AgentUpgrade upgrades the agent package itself via apt (from the configured Central agent
+// repository). Capability: AGENT_UPGRADE.
+message AgentUpgrade {
+  // Target version. Empty means latest available.
+  string version = 1;
+}
+
+// AgentUninstall removes the agent from the host after reporting success. Capability:
+// AGENT_UNINSTALL (the owner policy's `allow_remote_uninstall`). Central revokes the agent's
+// certificate afterwards.
+message AgentUninstall {
+  // Also remove /etc/central-agent and /var/lib/central-agent.
+  bool purge = 1;
+}
+
+// InventoryRefresh asks the agent to recollect and resend inventory now. Capability: TELEMETRY.
+message InventoryRefresh {
+  // Kinds to refresh. Empty means all.
+  repeated InventoryKind kinds = 1;
+}
+
+// InventoryKind identifies a category of inventory data.
+enum InventoryKind {
+  INVENTORY_KIND_UNSPECIFIED = 0;
+  INVENTORY_KIND_PACKAGES = 1;
+  INVENTORY_KIND_UPDATES = 2;
+  INVENTORY_KIND_SERVICES = 3;
+  INVENTORY_KIND_USERS = 4;
+  INVENTORY_KIND_NETWORK = 5;
+  INVENTORY_KIND_STORAGE = 6;
+  INVENTORY_KIND_FIREWALL = 7;
+}

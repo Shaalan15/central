@@ -1,0 +1,64 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// SystemService exposes instance-level information and key backup.
+service SystemService {
+  // GetSystemInfo returns version, storage and PKI information (permission system.view).
+  rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+  // ExportKeyBackup returns the master key and CA material encrypted with a passphrase
+  // (owner only, step-up). Store it offline: without it, a lost data directory means every
+  // agent must re-enroll.
+  rpc ExportKeyBackup(ExportKeyBackupRequest) returns (ExportKeyBackupResponse);
+}
+
+// SystemInfo describes the Central instance.
+message SystemInfo {
+  string version = 1;
+  string commit = 2;
+  string go_version = 3;
+  google.protobuf.Timestamp started_at = 4;
+  // Storage driver name, e.g. "appwrite" or "memory".
+  string storage_driver = 5;
+  // Storage endpoint host (no credentials).
+  string storage_endpoint = 6;
+  string storage_version = 7;
+  uint32 schema_version = 8;
+  string public_url = 9;
+  string agent_url = 10;
+  // SHA-256 of the agent CA's SubjectPublicKeyInfo (base64url, as embedded in enrollment keys).
+  string ca_pin = 11;
+  google.protobuf.Timestamp ca_not_after = 12;
+  uint32 connected_agents = 13;
+  // Running in --dev mode (in-memory store, not for production).
+  bool dev_mode = 14;
+  // TLS mode for the UI listener: "acme", "provided", "self-signed" or "reverse-proxy".
+  string tls_mode = 15;
+}
+
+// GetSystemInfoRequest is empty.
+message GetSystemInfoRequest {}
+
+// GetSystemInfoResponse returns the info.
+message GetSystemInfoResponse {
+  SystemInfo info = 1;
+}
+
+// ExportKeyBackupRequest carries the passphrase that encrypts the backup.
+message ExportKeyBackupRequest {
+  // At least 16 characters. Used with scrypt to derive the encryption key.
+  string passphrase = 1;
+}
+
+// ExportKeyBackupResponse returns the encrypted backup.
+message ExportKeyBackupResponse {
+  // Suggested file name, e.g. "central-keys-2026-09-25.cbk".
+  string file_name = 1;
+  // Encrypted backup (see docs/deployment/backup.md for the format).
+  bytes backup = 2;
+}

@@ -1,0 +1,186 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// File operations (Phase 1b).
+//
+// Security requirements for the agent (see docs/agent/AGENT_BUILD_PROMPT.md):
+//  - Paths must be absolute and clean (no "..", no NUL, no trailing slash except "/").
+//  - Paths are resolved with openat2(RESOLVE_NO_MAGICLINKS | RESOLVE_BENEATH from "/") and every
+//    component is checked against the owner policy AFTER resolution, so symlinks cannot be used
+//    to escape allowed trees or reach denied files.
+//  - Writes are atomic: write to a temp file in the same directory, fsync, rename.
+//  - The helper refuses to touch the agent's own files regardless of policy.
+
+// FileInfo describes one filesystem entry (lstat semantics: symlinks are not followed).
+message FileInfo {
+  // Absolute path.
+  string path = 1;
+  // Base name.
+  string name = 2;
+  // FileType is the kind of filesystem entry.
+  enum FileType {
+    FILE_TYPE_UNSPECIFIED = 0;
+    FILE_TYPE_REGULAR = 1;
+    FILE_TYPE_DIRECTORY = 2;
+    FILE_TYPE_SYMLINK = 3;
+    FILE_TYPE_SOCKET = 4;
+    FILE_TYPE_FIFO = 5;
+    FILE_TYPE_BLOCK_DEVICE = 6;
+    FILE_TYPE_CHAR_DEVICE = 7;
+  }
+  FileType type = 3;
+  uint64 size_bytes = 4;
+  // Permission bits including setuid/setgid/sticky (e.g. 0o4755 = 2541).
+  uint32 mode = 5;
+  uint32 uid = 6;
+  uint32 gid = 7;
+  string owner = 8;
+  string group = 9;
+  google.protobuf.Timestamp modified_at = 10;
+  // Symlink target, if type is SYMLINK.
+  string link_target = 11;
+  // The owner policy allows reading this entry's contents.
+  bool readable = 12;
+  // The owner policy allows modifying this entry.
+  bool writable = 13;
+}
+
+// FileList lists a directory. Capability: FILES_READ.
+message FileList {
+  string path = 1;
+  // Include entries starting with ".".
+  bool show_hidden = 2;
+  // Maximum entries (default 1000, max 10000).
+  uint32 limit = 3;
+}
+
+// FileListResult is the result of FileList.
+message FileListResult {
+  FileInfo directory = 1;
+  repeated FileInfo entries = 2;
+  bool truncated = 3;
+}
+
+// FileStat returns metadata for one path. Capability: FILES_READ.
+message FileStat {
+  string path = 1;
+}
+
+// FileStatResult is the result of FileStat.
+message FileStatResult {
+  FileInfo info = 1;
+}
+
+// FileRead returns up to 1 MiB of a regular file inline. Larger files use FileDownload.
+// Capability: FILES_READ.
+message FileRead {
+  string path = 1;
+  uint64 offset = 2;
+  // Maximum bytes to return (default and max 1 MiB).
+  uint32 length = 3;
+}
+
+// FileReadResult is the result of FileRead.
+message FileReadResult {
+  bytes content = 1;
+  // Total file size.
+  uint64 size_bytes = 2;
+  // Lowercase hex SHA-256 of the full file (for optimistic concurrency with FileWrite).
+  string sha256 = 3;
+  // The file looks binary (contains NUL in the first 8 KiB).
+  bool binary = 4;
+}
+
+// FileWrite creates or replaces a regular file (max 4 MiB inline; larger via FileUpload).
+// Capability: FILES_WRITE.
+message FileWrite {
+  string path = 1;
+  bytes content = 2;
+  // If set, fail with CONFLICT unless the current file's SHA-256 equals this value
+  // (optimistic concurrency). Use "absent" to require that the file does not exist yet.
+  string expected_sha256 = 3;
+  // Mode for newly created files (default 0o644). Existing files keep their mode and ownership.
+  uint32 create_mode = 4;
+  // Owner/group for newly created files (default root:root).
+  string create_owner = 5;
+  string create_group = 6;
+}
+
+// FileMkdir creates a directory. Capability: FILES_WRITE.
+message FileMkdir {
+  string path = 1;
+  // Create missing parents (`mkdir -p`).
+  bool parents = 2;
+  // Mode (default 0o755).
+  uint32 mode = 3;
+}
+
+// FileDelete removes a file or directory. Capability: FILES_WRITE.
+message FileDelete {
+  string path = 1;
+  // Required to delete non-empty directories.
+  bool recursive = 2;
+}
+
+// FileRename moves/renames within the same filesystem. Capability: FILES_WRITE.
+message FileRename {
+  string from_path = 1;
+  string to_path = 2;
+  // Replace the destination if it exists.
+  bool overwrite = 3;
+}
+
+// FileChmod changes permission bits. Capability: FILES_PERMISSIONS.
+// Setting setuid/setgid bits requires the owner policy's `allow_setuid`.
+message FileChmod {
+  string path = 1;
+  uint32 mode = 2;
+  bool recursive = 3;
+}
+
+// FileChown changes ownership. Capability: FILES_PERMISSIONS.
+message FileChown {
+  string path = 1;
+  // User name or empty to leave unchanged.
+  string owner = 2;
+  // Group name or empty to leave unchanged.
+  string group = 3;
+  bool recursive = 4;
+}
+
+// FileAclGet reads POSIX ACLs (`getfacl`). Capability: FILES_READ.
+message FileAclGet {
+  string path = 1;
+}
+
+// FileAclGetResult is the result of FileAclGet.
+message FileAclGetResult {
+  // ACL entries in getfacl text form, e.g. "user:alice:rw-".
+  repeated string entries = 1;
+  repeated string default_entries = 2;
+}
+
+// FileDownload streams a file to Central over an attached session. Capability: FILES_READ.
+message FileDownload {
+  string path = 1;
+}
+
+// FileUpload receives a file from Central over an attached session and installs it atomically.
+// Capability: FILES_WRITE.
+message FileUpload {
+  string path = 1;
+  uint64 size_bytes = 2;
+  // Lowercase hex SHA-256 of the content; the agent verifies before the final rename.
+  string sha256 = 3;
+  // Same semantics as FileWrite.
+  string expected_sha256 = 4;
+  uint32 create_mode = 5;
+  string create_owner = 6;
+  string create_group = 7;
+}

@@ -1,0 +1,169 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/agent/v1/command.proto";
+import "central/agent/v1/logs.proto";
+import "central/api/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// HostService runs typed operations on a single agent.
+//
+// Authorization: each operation type maps to one Central permission (e.g. packages_upgrade ->
+// "packages.manage", terminal_open -> "terminal.open") evaluated against the agent's scope, and
+// to one agent capability that the agent's owner policy must allow. High-risk operations
+// require a recent step-up. Secrets inside operations (e.g. passwords) are forwarded to the
+// agent but never stored or logged by Central.
+service HostService {
+  // RunOperation signs and sends one operation to an agent, then waits up to `wait` for it to
+  // finish. If it is still running, the response has a non-terminal state and the client
+  // continues with WatchCommand.
+  rpc RunOperation(RunOperationRequest) returns (RunOperationResponse);
+  // WatchCommand streams state changes and output of a command until it finishes.
+  rpc WatchCommand(WatchCommandRequest) returns (stream WatchCommandResponse);
+  // CancelCommand asks the agent to stop a running command.
+  rpc CancelCommand(CancelCommandRequest) returns (CancelCommandResponse);
+  // ListCommands returns command history for an agent (newest first).
+  rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse);
+  // OpenTerminal authorizes an interactive terminal (permission terminal.open, step-up). The
+  // browser then connects a WebSocket to /ws/terminal?ticket=<ticket> within 30 seconds.
+  rpc OpenTerminal(OpenTerminalRequest) returns (OpenTerminalResponse);
+  // FollowJournal streams journal entries from an agent until the client disconnects.
+  rpc FollowJournal(FollowJournalRequest) returns (stream FollowJournalResponse);
+  // CreateFileTransfer authorizes a file download or upload (Phase 1b). The browser uses the
+  // returned URL (single use, 60 seconds) with GET (download) or PUT (upload).
+  rpc CreateFileTransfer(CreateFileTransferRequest) returns (CreateFileTransferResponse);
+}
+
+// CommandRecord is Central's record of a command sent to an agent.
+message CommandRecord {
+  string command_id = 1;
+  string agent_id = 2;
+  string job_id = 3;
+  // Operation type name, e.g. "packages_upgrade".
+  string operation_type = 4;
+  // The operation with secret fields removed.
+  central.agent.v1.Operation operation = 5;
+  central.agent.v1.CommandState state = 6;
+  int32 progress_percent = 7;
+  string status = 8;
+  central.agent.v1.CommandError error = 9;
+  central.agent.v1.CommandResult result = 10;
+  PrincipalRef issuer = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp started_at = 13;
+  google.protobuf.Timestamp finished_at = 14;
+  google.protobuf.Timestamp expires_at = 15;
+  bool output_truncated = 16;
+}
+
+// RunOperationRequest targets one agent.
+message RunOperationRequest {
+  string agent_id = 1;
+  central.agent.v1.Operation operation = 2;
+  // How long to wait for completion before returning (default 20s, max 60s).
+  google.protobuf.Duration wait = 3;
+  // Command time-to-live: if the agent does not start it in time it expires (default 10m,
+  // max 24h). Offline agents receive queued commands when they reconnect within the TTL.
+  google.protobuf.Duration ttl = 4;
+}
+
+// RunOperationResponse returns the command record (terminal or in progress).
+message RunOperationResponse {
+  CommandRecord command = 1;
+}
+
+// WatchCommandRequest identifies a command.
+message WatchCommandRequest {
+  string command_id = 1;
+  // Resend buffered output from this sequence number (0 = from the beginning).
+  uint64 from_output_seq = 2;
+}
+
+// WatchCommandResponse is one event for a watched command.
+message WatchCommandResponse {
+  oneof event {
+    CommandRecord update = 1;
+    central.agent.v1.OutputChunk output = 2;
+  }
+}
+
+// CancelCommandRequest identifies a command.
+message CancelCommandRequest {
+  string command_id = 1;
+}
+
+// CancelCommandResponse is empty.
+message CancelCommandResponse {}
+
+// ListCommandsRequest pages an agent's command history.
+message ListCommandsRequest {
+  string agent_id = 1;
+  PageRequest page = 2;
+}
+
+// ListCommandsResponse is a page of commands.
+message ListCommandsResponse {
+  repeated CommandRecord commands = 1;
+  PageResponse page = 2;
+}
+
+// OpenTerminalRequest describes the terminal.
+message OpenTerminalRequest {
+  string agent_id = 1;
+  // Linux user (must be allowed by the agent's owner policy).
+  string run_as = 2;
+  uint32 cols = 3;
+  uint32 rows = 4;
+}
+
+// OpenTerminalResponse carries the WebSocket ticket.
+message OpenTerminalResponse {
+  string session_id = 1;
+  // Single-use ticket for /ws/terminal (valid 30s, bound to this browser session).
+  string ticket = 2;
+  // The session will be recorded.
+  bool recorded = 3;
+}
+
+// FollowJournalRequest selects entries to follow.
+message FollowJournalRequest {
+  string agent_id = 1;
+  central.agent.v1.JournalFilter filter = 2;
+  uint32 backlog = 3;
+}
+
+// FollowJournalResponse carries a batch of entries.
+message FollowJournalResponse {
+  repeated central.agent.v1.JournalEntry entries = 1;
+}
+
+// FileTransferDirection is download or upload.
+enum FileTransferDirection {
+  FILE_TRANSFER_DIRECTION_UNSPECIFIED = 0;
+  FILE_TRANSFER_DIRECTION_DOWNLOAD = 1;
+  FILE_TRANSFER_DIRECTION_UPLOAD = 2;
+}
+
+// CreateFileTransferRequest describes the transfer.
+message CreateFileTransferRequest {
+  string agent_id = 1;
+  FileTransferDirection direction = 2;
+  string path = 3;
+  // Uploads: size and SHA-256 of the content (verified by the agent).
+  uint64 size_bytes = 4;
+  string sha256 = 5;
+  // Uploads: optimistic concurrency (see central.agent.v1.FileWrite.expected_sha256).
+  string expected_sha256 = 6;
+  uint32 create_mode = 7;
+}
+
+// CreateFileTransferResponse carries the single-use URL.
+message CreateFileTransferResponse {
+  string url = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}

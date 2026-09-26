@@ -1,0 +1,181 @@
+<div class="page fleet">
+  <header class="page-header">
+    <div>
+      <h1>Fleet</h1>
+      <p class="muted">{{ summary()?.total ?? 0 }} hosts in {{ session.org()?.name }}</p>
+    </div>
+    @if (session.can('tokens.manage')) {
+      <a mat-flat-button routerLink="/enrollment" class="add"
+        ><app-icon name="add" /><span class="add-label">Add hosts</span></a
+      >
+    }
+  </header>
+
+  @if ((summary()?.pendingEnrollments ?? 0) > 0 && session.can('agents.approve')) {
+    <a class="banner" routerLink="/approvals">
+      <app-icon name="how_to_reg" />
+      <span
+        ><strong>{{ summary()?.pendingEnrollments }}</strong> host(s) waiting for approval</span
+      >
+      <app-icon name="chevron_right" />
+    </a>
+  }
+
+  <section class="tiles" aria-label="Fleet summary">
+    @for (t of tiles(); track t.id) {
+      <button
+        type="button"
+        class="tile"
+        [class.selected]="quick() === t.id"
+        [attr.data-tone]="t.tone"
+        (click)="setQuick(t.id)"
+        [attr.aria-pressed]="quick() === t.id"
+      >
+        <span class="tile-head"><app-icon [name]="t.icon" [size]="18" /> {{ t.label }}</span>
+        <span class="tile-value tabular-nums">{{ t.value }}</span>
+        @if (t.sub) {
+          <span class="tile-sub">{{ t.sub }}</span>
+        }
+      </button>
+    }
+  </section>
+
+  <section class="table card" aria-label="Hosts">
+    <div class="toolbar">
+      <label class="search">
+        <app-icon name="search" />
+        <input
+          type="search"
+          placeholder="Search name, IP, OS or tag"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+          aria-label="Search hosts"
+        />
+      </label>
+      @if (quick() !== 'all') {
+        <button type="button" class="chip primary filter" (click)="quick.set('all')">
+          {{ quick() }} <app-icon name="close" [size]="14" />
+        </button>
+      }
+      <span class="muted count tabular-nums">{{ rows().length }} shown</span>
+    </div>
+
+    <div class="grid head" role="row">
+      <button type="button" class="sort" (click)="sortBy('name')" [class.on]="sort() === 'name'">
+        Host
+      </button>
+      <span>System</span>
+      <button type="button" class="sort" (click)="sortBy('cpu')" [class.on]="sort() === 'cpu'">
+        CPU
+      </button>
+      <button
+        type="button"
+        class="sort"
+        (click)="sortBy('memory')"
+        [class.on]="sort() === 'memory'"
+      >
+        Memory
+      </button>
+      <button type="button" class="sort" (click)="sortBy('disk')" [class.on]="sort() === 'disk'">
+        Disk
+      </button>
+      <button
+        type="button"
+        class="sort"
+        (click)="sortBy('updates')"
+        [class.on]="sort() === 'updates'"
+      >
+        Updates
+      </button>
+      <span>Policy</span>
+      <button
+        type="button"
+        class="sort right"
+        (click)="sortBy('seen')"
+        [class.on]="sort() === 'seen'"
+      >
+        Uptime
+      </button>
+    </div>
+
+    @if (store.list().length === 0) {
+      <div class="empty">
+        <app-icon name="dns" [size]="40" />
+        <h2>No hosts yet</h2>
+        <p class="muted">
+          Create an enrollment token and install the agent on your Ubuntu or Debian servers.
+        </p>
+        @if (session.can('tokens.manage')) {
+          <a mat-flat-button routerLink="/enrollment">Add your first host</a>
+        }
+      </div>
+    } @else {
+      <cdk-virtual-scroll-viewport itemSize="56" class="viewport">
+        <a
+          *cdkVirtualFor="let a of rows(); trackBy: trackId"
+          class="grid row"
+          role="row"
+          [routerLink]="['/hosts', a.id]"
+        >
+          <span class="host">
+            <span
+              class="status"
+              [class.on]="a.connection === online"
+              [matTooltip]="a.connection === online ? 'Online' : 'Offline'"
+            ></span>
+            <span class="names">
+              <strong>{{ a.name }}</strong>
+              <span class="muted mono">{{ a.primaryIp || a.hostname }}</span>
+            </span>
+          </span>
+          <span class="system">
+            <span>{{ a.osPrettyName || '—' }}</span>
+            <span class="tags">
+              @for (t of a.tags.slice(0, 3); track t) {
+                <span class="chip">{{ t }}</span>
+              }
+            </span>
+          </span>
+          <app-meter
+            [value]="a.cpuPercent"
+            [unknown]="a.connection !== online"
+            [title]="'Load ' + a.load1.toFixed(2) + ' on ' + a.cpuThreads + ' threads'"
+          />
+          <app-meter [value]="a.memoryUsedPercent" [unknown]="a.connection !== online" />
+          <app-meter
+            [value]="a.diskUsedPercentMax"
+            [unknown]="a.connection !== online"
+            title="Fullest filesystem"
+          />
+          <span class="updates">
+            @if (a.securityUpdates) {
+              <span class="chip danger" [matTooltip]="a.securityUpdates + ' security updates'"
+                ><app-icon name="security" [size]="14" /> {{ a.securityUpdates }}</span
+              >
+            }
+            @if (a.updatesAvailable) {
+              <span class="chip">{{ a.updatesAvailable }}</span>
+            } @else {
+              <span class="muted">Up to date</span>
+            }
+            @if (a.rebootRequired) {
+              <span class="chip warn" matTooltip="Reboot required"
+                ><app-icon name="restart_alt" [size]="14"
+              /></span>
+            }
+          </span>
+          <span>
+            <span
+              class="chip"
+              [class.primary]="a.policyProfile === 4"
+              [class.warn]="a.policyPaused"
+            >
+              {{ a.policyPaused ? 'Paused' : (profiles[a.policyProfile] ?? '—') }}
+            </span>
+          </span>
+          <span class="right muted tabular-nums">{{ uptime(a) }}</span>
+        </a>
+      </cdk-virtual-scroll-viewport>
+    }
+  </section>
+</div>

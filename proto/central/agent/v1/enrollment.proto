@@ -1,0 +1,136 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "central/agent/v1/host.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// EnrollmentService lets a new agent request membership in an organization.
+//
+// Transport: served on the agent listener (default :9443) over TLS 1.3. The agent MUST verify
+// that the server certificate chains to a CA whose SubjectPublicKeyInfo SHA-256 equals the pin
+// embedded in the enrollment key BEFORE sending any request. No client certificate is presented
+// (the agent does not have one yet).
+//
+// Flow:
+//  1. The agent generates an ECDSA P-256 key pair locally (the private key never leaves the host)
+//     and calls Enroll with the enrollment key's token ID and secret, a CSR and its host facts.
+//  2. Central returns an enrollment ID, a poll secret and the server nonce. Both sides derive the
+//     pairing code (see EnrollResponse.pairing_code); the agent prints its own derived code.
+//  3. The agent long-polls GetEnrollmentStatus until the request is APPROVED, DENIED or EXPIRED.
+//  4. On APPROVED the agent stores the issued certificate and switches to AgentService.Connect
+//     with mutual TLS.
+service EnrollmentService {
+  // Enroll submits an enrollment request. Rate limited per source IP and per token.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+  // GetEnrollmentStatus returns the current state of an enrollment request. If the request is
+  // still pending, the server holds the call open for up to `wait` (capped at 60s) and returns
+  // early as soon as the state changes.
+  rpc GetEnrollmentStatus(GetEnrollmentStatusRequest) returns (GetEnrollmentStatusResponse);
+}
+
+// EnrollmentStatus is the lifecycle state of an enrollment request.
+enum EnrollmentStatus {
+  ENROLLMENT_STATUS_UNSPECIFIED = 0;
+  // Waiting for an admin decision.
+  ENROLLMENT_STATUS_PENDING = 1;
+  // Approved; the response carries the agent's certificate.
+  ENROLLMENT_STATUS_APPROVED = 2;
+  // Denied by an admin. The agent must stop and must not retry with the same key.
+  ENROLLMENT_STATUS_DENIED = 3;
+  // No decision before the request expired. The agent may start over.
+  ENROLLMENT_STATUS_EXPIRED = 4;
+}
+
+// EnrollRequest is sent by an agent that has no identity yet.
+message EnrollRequest {
+  // The token ID part of the enrollment key (identifies which token is being used).
+  string token_id = 1;
+  // The secret part of the enrollment key. Central stores only its SHA-256 and compares in
+  // constant time.
+  string token_secret = 2;
+  // DER-encoded PKCS#10 certificate signing request for an ECDSA P-256 key. The CSR signature
+  // proves possession of the private key. Subject and extensions are ignored: Central decides
+  // the certificate contents.
+  bytes csr_der = 3;
+  HostFacts facts = 4;
+  // Semantic version of the agent, e.g. "0.1.0".
+  string agent_version = 5;
+  // Highest agent protocol version the agent speaks (currently 1).
+  uint32 protocol_version = 6;
+}
+
+// EnrollResponse acknowledges a submitted enrollment request.
+message EnrollResponse {
+  // Opaque ID of the enrollment request.
+  string enrollment_id = 1;
+  // Random secret required to poll this request's status. Keep it in memory or in the agent's
+  // 0600 state directory; never log it.
+  string poll_secret = 2;
+  // 16 random bytes chosen by Central, used in the pairing code derivation.
+  bytes server_nonce = 3;
+  // Pairing code as computed by Central, formatted "XXXX-XXXX".
+  //
+  // Derivation (the agent MUST compute this itself and display its own result):
+  //   digest = SHA-256("central-pairing-v1" || 0x00 || spki_der || enrollment_id || server_nonce)
+  //   code   = first 8 characters of Crockford base32 (no padding, uppercase) of digest,
+  //            formatted as 4 chars, "-", 4 chars.
+  // where spki_der is the DER SubjectPublicKeyInfo of the agent's key. If the agent's derived
+  // code differs from this field, the agent must abort enrollment.
+  string pairing_code = 4;
+  // PENDING for manual approval, or APPROVED when the token allows auto-approval (the agent
+  // still calls GetEnrollmentStatus to fetch the certificate).
+  EnrollmentStatus status = 5;
+  // When the pending request expires if nobody decides.
+  google.protobuf.Timestamp expires_at = 6;
+  // Suggested delay between status polls when a poll returns early without a change.
+  google.protobuf.Duration poll_interval = 7;
+}
+
+// GetEnrollmentStatusRequest polls an enrollment request.
+message GetEnrollmentStatusRequest {
+  string enrollment_id = 1;
+  string poll_secret = 2;
+  // How long the server may hold the request open waiting for a change (capped at 60s).
+  google.protobuf.Duration wait = 3;
+}
+
+// GetEnrollmentStatusResponse reports the state of an enrollment request.
+message GetEnrollmentStatusResponse {
+  EnrollmentStatus status = 1;
+  // Set when status is APPROVED.
+  AgentCredentials credentials = 2;
+  // Human-readable reason when DENIED or EXPIRED.
+  string reason = 3;
+}
+
+// AgentCredentials is everything an approved agent needs to connect with mutual TLS.
+message AgentCredentials {
+  // Agent ID assigned by Central. Also present in the certificate's URI SAN.
+  string agent_id = 1;
+  // Organization the agent belongs to.
+  string org_id = 2;
+  // DER-encoded X.509 client certificate for the agent's key.
+  bytes certificate_der = 3;
+  // DER-encoded CA certificates (issuing CA first). The agent trusts only these for the
+  // agent endpoint from now on.
+  repeated bytes ca_certificates_der = 4;
+  // Keys Central uses to sign commands (key set version 1). The enrollment command (run as
+  // root) writes them to the helper's root-owned trust store; the helper rejects any command
+  // not signed by a trusted key. Later rotations arrive as SignedKeySet messages.
+  repeated CommandSigningKey command_signing_keys = 5;
+}
+
+// CommandSigningKey is an Ed25519 public key used to verify command envelopes.
+message CommandSigningKey {
+  // Key identifier referenced by SignedCommand.key_id.
+  string key_id = 1;
+  // Raw 32-byte Ed25519 public key.
+  bytes public_key = 2;
+  // After this time the key must no longer be accepted.
+  google.protobuf.Timestamp not_after = 3;
+}

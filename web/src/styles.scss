@@ -1,0 +1,244 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+@use '@angular/material' as mat;
+
+// Material 3 theme. Colors follow the OS light/dark preference via `color-scheme`;
+// the app shell can force a scheme by setting `color-scheme` on <html>.
+html {
+  color-scheme: light dark;
+  height: 100%;
+
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      typography: (
+        plain-family: 'Inter Variable',
+        brand-family: 'Inter Variable',
+      ),
+      density: -2,
+    )
+  );
+}
+
+html.theme-light {
+  color-scheme: light;
+}
+
+html.theme-dark {
+  color-scheme: dark;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  -webkit-font-smoothing: antialiased;
+}
+
+// Tabular numerals keep live metrics from jittering as values change.
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+// ---- Shared layout helpers ----------------------------------------------------------------
+
+:root {
+  --app-warn: #d97706;
+  --app-ok: #16a34a;
+  --app-radius: 12px;
+}
+
+.muted {
+  color: var(--mat-sys-on-surface-variant);
+}
+.error {
+  color: var(--mat-sys-error);
+}
+.mono {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+// Auth and setup pages: a centered card on a subtle background.
+.auth-page {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(
+      1200px 600px at 10% -10%,
+      color-mix(in srgb, var(--mat-sys-primary) 14%, transparent),
+      transparent
+    ),
+    var(--mat-sys-surface-container-lowest);
+}
+
+.auth-card {
+  width: min(420px, 100%);
+  box-sizing: border-box;
+  padding: 28px 28px 20px;
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container-low);
+  border: 1px solid var(--mat-sys-outline-variant);
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.08);
+
+  &.wide {
+    width: min(640px, 100%);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    color: var(--mat-sys-primary);
+    h1 {
+      font: var(--mat-sys-title-large);
+      margin: 0;
+      color: var(--mat-sys-on-surface);
+    }
+    p {
+      margin: 2px 0 0;
+      font: var(--mat-sys-body-small);
+    }
+  }
+  mat-progress-bar {
+    margin: -8px 0 8px;
+  }
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .form > p {
+    margin: 0;
+    color: var(--mat-sys-on-surface-variant);
+  }
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .actions.stretch {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0 4px;
+    color: var(--mat-sys-on-surface-variant);
+    font: var(--mat-sys-label-medium);
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      border-top: 1px solid var(--mat-sys-outline-variant);
+    }
+  }
+  .link {
+    align-self: center;
+    margin-top: 8px;
+  }
+  .error {
+    margin: 12px 0 0;
+  }
+}
+
+// Page scaffolding inside the app shell.
+.page {
+  padding: 20px 24px 32px;
+  box-sizing: border-box;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  h1 {
+    font: var(--mat-sys-headline-small);
+    margin: 0;
+  }
+  p {
+    margin: 2px 0 0;
+  }
+}
+.card {
+  background: var(--mat-sys-surface-container-low);
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: var(--app-radius);
+  padding: 16px;
+  min-width: 0;
+  h2 {
+    font: var(--mat-sys-title-small);
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: var(--mat-sys-label-small);
+  background: var(--mat-sys-surface-container-highest);
+  color: var(--mat-sys-on-surface-variant);
+  white-space: nowrap;
+  &.primary {
+    background: var(--mat-sys-primary-container);
+    color: var(--mat-sys-on-primary-container);
+  }
+  &.warn {
+    background: color-mix(in srgb, var(--app-warn) 18%, transparent);
+    color: var(--app-warn);
+  }
+  &.danger {
+    background: var(--mat-sys-error-container);
+    color: var(--mat-sys-on-error-container);
+  }
+  &.ok {
+    background: color-mix(in srgb, var(--app-ok) 16%, transparent);
+    color: var(--app-ok);
+  }
+}
+.dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+  dt {
+    color: var(--mat-sys-on-surface-variant);
+    font: var(--mat-sys-body-small);
+  }
+  dd {
+    margin: 0;
+    font: var(--mat-sys-body-medium);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+// uPlot legend/axis colors follow the theme.
+.uplot,
+.u-legend {
+  font-family: 'Inter Variable', sans-serif;
+  color: var(--mat-sys-on-surface-variant);
+}
+.u-legend {
+  font-size: 12px;
+}

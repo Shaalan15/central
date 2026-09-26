@@ -1,0 +1,65 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// HostFacts describes the machine an agent runs on. Sent during enrollment and in every Hello,
+// so Central always has current identity facts (hostname changes, kernel upgrades, new IPs).
+message HostFacts {
+  // Short hostname (`hostname -s`).
+  string hostname = 1;
+  // Fully-qualified name if resolvable, else empty.
+  string fqdn = 2;
+  // Contents of /etc/machine-id (32 lowercase hex chars). Used to detect reinstalls and clones.
+  string machine_id = 3;
+  // Contents of /proc/sys/kernel/random/boot_id. Changes on every boot.
+  string boot_id = 4;
+  OSInfo os = 5;
+  // `uname -r`, e.g. "6.8.0-45-generic".
+  string kernel_release = 6;
+  // Go-style architecture name: "amd64" or "arm64".
+  string arch = 7;
+  // Output of `systemd-detect-virt` ("none", "kvm", "lxc", "vmware", ...).
+  string virtualization = 8;
+  CPUInfo cpu = 9;
+  uint64 memory_total_bytes = 10;
+  // IANA time zone, e.g. "Europe/Berlin".
+  string timezone = 11;
+  // Non-loopback addresses on all interfaces (IPv4 and IPv6, without link-local).
+  repeated InterfaceAddress addresses = 12;
+  google.protobuf.Timestamp booted_at = 13;
+}
+
+// OSInfo is parsed from /etc/os-release.
+message OSInfo {
+  // ID, e.g. "ubuntu" or "debian".
+  string id = 1;
+  // VERSION_ID, e.g. "24.04" or "12".
+  string version_id = 2;
+  // VERSION_CODENAME, e.g. "noble" or "bookworm".
+  string codename = 3;
+  // PRETTY_NAME, e.g. "Ubuntu 24.04.1 LTS".
+  string pretty_name = 4;
+  // ID_LIKE, e.g. ["debian"].
+  repeated string id_like = 5;
+}
+
+// CPUInfo summarizes the processor.
+message CPUInfo {
+  string model = 1;
+  // Physical cores.
+  uint32 cores = 2;
+  // Logical CPUs (hardware threads).
+  uint32 threads = 3;
+}
+
+// InterfaceAddress is one IP address bound to a network interface.
+message InterfaceAddress {
+  string interface = 1;
+  // Address in CIDR notation, e.g. "10.0.0.5/24" or "2001:db8::5/64".
+  string cidr = 2;
+}

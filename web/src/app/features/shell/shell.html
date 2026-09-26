@@ -1,0 +1,78 @@
+<mat-sidenav-container class="container">
+  <mat-sidenav
+    #nav
+    [mode]="narrow() ? 'over' : 'side'"
+    [opened]="!narrow()"
+    class="nav"
+    [fixedInViewport]="narrow()"
+  >
+    <a class="brand" routerLink="/">
+      <app-icon name="hub" [size]="26" />
+      <span>Central</span>
+    </a>
+    <nav aria-label="Main">
+      @for (item of visibleNav(); track item.path) {
+        <a
+          class="nav-item"
+          [routerLink]="item.path"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: item.path === '/' }"
+          (click)="narrow() && nav.close()"
+        >
+          <app-icon [name]="item.icon" />
+          <span class="label">{{ item.label }}</span>
+          @if (item.badge && item.badge()) {
+            <span class="count tabular-nums">{{ item.badge() }}</span>
+          }
+        </a>
+      }
+    </nav>
+    <div class="org">
+      <span class="muted">Organization</span>
+      <strong>{{ session.org()?.name }}</strong>
+    </div>
+  </mat-sidenav>
+
+  <mat-sidenav-content class="content">
+    <header class="topbar">
+      @if (narrow()) {
+        <button mat-icon-button aria-label="Open navigation" (click)="nav.toggle()">
+          <app-icon name="menu" />
+        </button>
+      }
+      <div class="grow"></div>
+      <span
+        class="live"
+        [class.on]="fleet.connected()"
+        [matTooltip]="fleet.connected() ? 'Live updates connected' : 'Reconnecting…'"
+      >
+        <span class="pulse"></span>{{ fleet.connected() ? 'Live' : 'Offline' }}
+      </span>
+      <button
+        mat-icon-button
+        [matTooltip]="themeLabel()"
+        [attr.aria-label]="themeLabel()"
+        (click)="theme.toggle()"
+      >
+        <app-icon [name]="themeIcon()" />
+      </button>
+      <button mat-icon-button class="avatar" [matMenuTriggerFor]="userMenu" aria-label="Account">
+        <span>{{ initials() }}</span>
+      </button>
+      <mat-menu #userMenu="matMenu" xPosition="before">
+        <div class="who">
+          <strong>{{ session.user()?.displayName }}</strong>
+          <span class="muted">{{ session.user()?.email }}</span>
+        </div>
+        <mat-divider />
+        <a mat-menu-item routerLink="/settings/account"
+          ><app-icon name="person" /> Account and security</a
+        >
+        <button mat-menu-item (click)="logout()"><app-icon name="logout" /> Sign out</button>
+      </mat-menu>
+    </header>
+    <main class="main">
+      <router-outlet />
+    </main>
+  </mat-sidenav-content>
+</mat-sidenav-container>

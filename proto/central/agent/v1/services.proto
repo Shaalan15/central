@@ -1,0 +1,85 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Service is a systemd unit of type service (read via the systemd D-Bus API).
+message Service {
+  // Unit name including suffix, e.g. "nginx.service".
+  string name = 1;
+  string description = 2;
+  // LoadState: "loaded", "not-found", "masked", ...
+  string load_state = 3;
+  // ActiveState: "active", "inactive", "failed", "activating", ...
+  string active_state = 4;
+  // SubState: "running", "exited", "dead", ...
+  string sub_state = 5;
+  // UnitFileState: "enabled", "disabled", "static", "masked", ...
+  string unit_file_state = 6;
+  // Main PID if running, else 0.
+  uint32 main_pid = 7;
+  // Memory currently used by the unit's cgroup, if accounting is enabled.
+  uint64 memory_bytes = 8;
+  google.protobuf.Timestamp active_since = 9;
+  // Protected by the owner policy (cannot be stopped/disabled from Central).
+  bool protected = 10;
+}
+
+// ServiceInventory is the list of service units.
+message ServiceInventory {
+  repeated Service services = 1;
+}
+
+// ServiceList lists service units. Capability: SERVICES_READ.
+message ServiceList {
+  // Include inactive units.
+  bool include_inactive = 1;
+}
+
+// ServiceListResult is the result of ServiceList.
+message ServiceListResult {
+  repeated Service services = 1;
+}
+
+// ServiceAction changes the state of a unit. Capability: SERVICES_MANAGE.
+// The helper refuses actions on units protected by the owner policy and on the agent's own
+// units regardless of policy.
+message ServiceAction {
+  // Unit name including suffix, e.g. "nginx.service". Must match ^[A-Za-z0-9:_.@\-]+$.
+  string unit = 1;
+  // Action is the systemd operation to perform.
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_START = 1;
+    ACTION_STOP = 2;
+    ACTION_RESTART = 3;
+    ACTION_RELOAD = 4;
+    ACTION_ENABLE = 5;
+    ACTION_DISABLE = 6;
+    ACTION_MASK = 7;
+    ACTION_UNMASK = 8;
+  }
+  Action action = 2;
+  // For ENABLE/DISABLE: also start/stop now (`--now`).
+  bool now = 3;
+}
+
+// ServiceStatus returns details about a single unit. Capability: SERVICES_READ.
+message ServiceStatus {
+  string unit = 1;
+}
+
+// ServiceStatusResult is the result of ServiceStatus.
+message ServiceStatusResult {
+  Service service = 1;
+  // Unit file path, e.g. "/lib/systemd/system/nginx.service".
+  string fragment_path = 2;
+  // ExecMainStatus of the last run.
+  int32 exec_main_status = 3;
+  // Number of restarts (NRestarts).
+  uint32 restarts = 4;
+}

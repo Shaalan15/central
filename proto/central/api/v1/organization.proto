@@ -1,0 +1,314 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "central/api/v1/auth.proto";
+import "central/api/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// OrganizationService manages the active organization's settings.
+service OrganizationService {
+  // GetOrganization returns the active organization.
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+  // UpdateOrganization changes name and settings (permission org.settings.manage, step-up).
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (UpdateOrganizationResponse);
+}
+
+// MemberService manages who belongs to the active organization.
+service MemberService {
+  // ListMembers lists members and their role bindings.
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+  // InviteMember creates a single-use invitation link (shown once).
+  rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
+  // ListInvites lists pending invitations.
+  rpc ListInvites(ListInvitesRequest) returns (ListInvitesResponse);
+  // RevokeInvite cancels a pending invitation.
+  rpc RevokeInvite(RevokeInviteRequest) returns (RevokeInviteResponse);
+  // UpdateMember replaces a member's role bindings (step-up).
+  rpc UpdateMember(UpdateMemberRequest) returns (UpdateMemberResponse);
+  // RemoveMember removes a member and revokes their sessions in this organization (step-up).
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+}
+
+// RoleService lists and (Phase 1b) edits roles.
+service RoleService {
+  // ListRoles lists built-in and custom roles.
+  rpc ListRoles(ListRolesRequest) returns (ListRolesResponse);
+  // ListPermissions returns the permission catalog.
+  rpc ListPermissions(ListPermissionsRequest) returns (ListPermissionsResponse);
+  // CreateRole creates a custom role (Phase 1b).
+  rpc CreateRole(CreateRoleRequest) returns (CreateRoleResponse);
+  // UpdateRole changes a custom role (Phase 1b).
+  rpc UpdateRole(UpdateRoleRequest) returns (UpdateRoleResponse);
+  // DeleteRole deletes an unused custom role (Phase 1b).
+  rpc DeleteRole(DeleteRoleRequest) returns (DeleteRoleResponse);
+}
+
+// ApiKeyService manages API keys for automation (Terraform, cloud-init, CI).
+service ApiKeyService {
+  // CreateApiKey creates a key bound to a role and scope (shown once, step-up).
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  // ListApiKeys lists keys (never the secrets).
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+  // RevokeApiKey revokes a key immediately.
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+}
+
+// Organization is a tenant: agents, members and settings belong to exactly one organization.
+message Organization {
+  string id = 1;
+  string name = 2;
+  OrganizationSettings settings = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// OrganizationSettings are tenant-wide policies.
+message OrganizationSettings {
+  // Default agent metrics interval (5s..5m).
+  google.protobuf.Duration metrics_interval = 1;
+  // Session idle timeout (5m..8h).
+  google.protobuf.Duration session_idle_timeout = 2;
+  // Session absolute lifetime (1h..7d).
+  google.protobuf.Duration session_max_lifetime = 3;
+  // How long a step-up re-authentication stays valid (1m..30m).
+  google.protobuf.Duration step_up_window = 4;
+  // Jobs targeting more agents than this require typing the target count to confirm.
+  uint32 mass_action_confirm_threshold = 5;
+  // Retention of the audit log (min 90 days).
+  google.protobuf.Duration audit_retention = 6;
+  // Retention of hourly metric chunks.
+  google.protobuf.Duration metrics_retention = 7;
+  // Retention of terminal recordings.
+  google.protobuf.Duration recording_retention = 8;
+  // Record terminal sessions (asciicast) for audit.
+  bool record_terminal_sessions = 9;
+}
+
+// GetOrganizationRequest is empty.
+message GetOrganizationRequest {}
+
+// GetOrganizationResponse returns the organization.
+message GetOrganizationResponse {
+  Organization organization = 1;
+}
+
+// UpdateOrganizationRequest changes the organization.
+message UpdateOrganizationRequest {
+  string name = 1;
+  OrganizationSettings settings = 2;
+}
+
+// UpdateOrganizationResponse returns the updated organization.
+message UpdateOrganizationResponse {
+  Organization organization = 1;
+}
+
+// RoleBinding grants a role, optionally limited to some agents.
+message RoleBinding {
+  string role_id = 1;
+  // Role name (output only).
+  string role_name = 2;
+  // Unset means all agents.
+  AgentScope scope = 3;
+}
+
+// Member is a user's membership in the organization.
+message Member {
+  User user = 1;
+  repeated RoleBinding role_bindings = 2;
+  google.protobuf.Timestamp joined_at = 3;
+}
+
+// ListMembersRequest pages through members.
+message ListMembersRequest {
+  PageRequest page = 1;
+  // Case-insensitive match on email or display name.
+  string query = 2;
+}
+
+// ListMembersResponse is a page of members.
+message ListMembersResponse {
+  repeated Member members = 1;
+  PageResponse page = 2;
+}
+
+// InviteMemberRequest invites someone by email.
+message InviteMemberRequest {
+  string email = 1;
+  repeated RoleBinding role_bindings = 2;
+  // Invitation validity (default 72h, max 14d).
+  google.protobuf.Duration expires_in = 3;
+}
+
+// Invite is a pending invitation.
+message Invite {
+  string id = 1;
+  string email = 2;
+  repeated RoleBinding role_bindings = 3;
+  PrincipalRef created_by = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+// InviteMemberResponse returns the invitation link (shown once).
+message InviteMemberResponse {
+  Invite invite = 1;
+  string invite_url = 2;
+  // An invitation email was sent (SMTP configured).
+  bool email_sent = 3;
+}
+
+// ListInvitesRequest is empty.
+message ListInvitesRequest {}
+
+// ListInvitesResponse lists pending invitations.
+message ListInvitesResponse {
+  repeated Invite invites = 1;
+}
+
+// RevokeInviteRequest identifies an invitation.
+message RevokeInviteRequest {
+  string invite_id = 1;
+}
+
+// RevokeInviteResponse is empty.
+message RevokeInviteResponse {}
+
+// UpdateMemberRequest replaces role bindings.
+message UpdateMemberRequest {
+  string user_id = 1;
+  repeated RoleBinding role_bindings = 2;
+}
+
+// UpdateMemberResponse returns the updated member.
+message UpdateMemberResponse {
+  Member member = 1;
+}
+
+// RemoveMemberRequest identifies a member.
+message RemoveMemberRequest {
+  string user_id = 1;
+}
+
+// RemoveMemberResponse is empty.
+message RemoveMemberResponse {}
+
+// Permission describes one permission in the catalog.
+message Permission {
+  // Name, e.g. "agents.approve".
+  string name = 1;
+  string description = 2;
+  // Grouping for display, e.g. "Agents", "Packages".
+  string category = 3;
+  // Actions using this permission require a recent step-up re-authentication.
+  bool requires_step_up = 4;
+  // Can be scoped to a subset of agents.
+  bool agent_scoped = 5;
+}
+
+// Role is a named set of permissions.
+message Role {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  // Built-in roles (owner, admin, operator, viewer, auditor) cannot be edited.
+  bool builtin = 4;
+  repeated string permissions = 5;
+}
+
+// ListRolesRequest is empty.
+message ListRolesRequest {}
+
+// ListRolesResponse lists roles.
+message ListRolesResponse {
+  repeated Role roles = 1;
+}
+
+// ListPermissionsRequest is empty.
+message ListPermissionsRequest {}
+
+// ListPermissionsResponse returns the catalog.
+message ListPermissionsResponse {
+  repeated Permission permissions = 1;
+}
+
+// CreateRoleRequest defines a custom role.
+message CreateRoleRequest {
+  string name = 1;
+  string description = 2;
+  repeated string permissions = 3;
+}
+
+// CreateRoleResponse returns the new role.
+message CreateRoleResponse {
+  Role role = 1;
+}
+
+// UpdateRoleRequest changes a custom role.
+message UpdateRoleRequest {
+  string role_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string permissions = 4;
+}
+
+// UpdateRoleResponse returns the updated role.
+message UpdateRoleResponse {
+  Role role = 1;
+}
+
+// DeleteRoleRequest identifies a custom role.
+message DeleteRoleRequest {
+  string role_id = 1;
+}
+
+// DeleteRoleResponse is empty.
+message DeleteRoleResponse {}
+
+// ApiKey is an automation credential (metadata only).
+message ApiKey {
+  string id = 1;
+  string name = 2;
+  // Non-secret prefix shown in lists, e.g. "cak1_Ab3d".
+  string prefix = 3;
+  RoleBinding role_binding = 4;
+  PrincipalRef created_by = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  google.protobuf.Timestamp last_used_at = 8;
+  google.protobuf.Timestamp revoked_at = 9;
+}
+
+// CreateApiKeyRequest defines a key.
+message CreateApiKeyRequest {
+  string name = 1;
+  RoleBinding role_binding = 2;
+  // Validity (default 90d, max 1y).
+  google.protobuf.Duration expires_in = 3;
+}
+
+// CreateApiKeyResponse returns the key secret (shown once).
+message CreateApiKeyResponse {
+  ApiKey api_key = 1;
+  string secret = 2;
+}
+
+// ListApiKeysRequest is empty.
+message ListApiKeysRequest {}
+
+// ListApiKeysResponse lists keys.
+message ListApiKeysResponse {
+  repeated ApiKey api_keys = 1;
+}
+
+// RevokeApiKeyRequest identifies a key.
+message RevokeApiKeyRequest {
+  string api_key_id = 1;
+}
+
+// RevokeApiKeyResponse is empty.
+message RevokeApiKeyResponse {}

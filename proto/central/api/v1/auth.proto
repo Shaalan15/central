@@ -1,0 +1,358 @@
+// Copyright (C) 2026 The Central Authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package central.api.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AuthService handles sign-in, MFA, step-up re-authentication and the caller's own sessions.
+//
+// Sign-in is a small state machine carried by the session cookie:
+//   Login(email, password)
+//     -> stage MFA_REQUIRED       : VerifyTotp | FinishPasskeyLogin | UseRecoveryCode -> FULL
+//     -> stage MFA_ENROLLMENT     : only MFA enrollment RPCs and Logout are allowed until the
+//                                   user has registered a passkey or TOTP -> FULL
+// Passwordless passkey sign-in (discoverable credentials) goes straight to FULL.
+service AuthService {
+  // Login verifies email and password. Responses are identical for unknown users and wrong
+  // passwords, and timing is equalized.
+  rpc Login(LoginRequest) returns (LoginResponse);
+  // VerifyTotp completes an MFA_REQUIRED login with a TOTP code.
+  rpc VerifyTotp(VerifyTotpRequest) returns (VerifyTotpResponse);
+  // UseRecoveryCode completes an MFA_REQUIRED login with a single-use recovery code.
+  rpc UseRecoveryCode(UseRecoveryCodeRequest) returns (UseRecoveryCodeResponse);
+  // BeginPasskeyLogin returns WebAuthn assertion options (for MFA or passwordless sign-in).
+  rpc BeginPasskeyLogin(BeginPasskeyLoginRequest) returns (BeginPasskeyLoginResponse);
+  // FinishPasskeyLogin verifies a WebAuthn assertion.
+  rpc FinishPasskeyLogin(FinishPasskeyLoginRequest) returns (FinishPasskeyLoginResponse);
+  // Logout ends the current session.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  // GetSession describes the current session, user, organization and permissions.
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  // SwitchOrganization changes the active organization (session is rotated).
+  rpc SwitchOrganization(SwitchOrganizationRequest) returns (SwitchOrganizationResponse);
+
+  // BeginStepUp starts re-authentication for sensitive actions.
+  rpc BeginStepUp(BeginStepUpRequest) returns (BeginStepUpResponse);
+  // FinishStepUp completes re-authentication; sensitive actions are allowed until
+  // step_up_valid_until.
+  rpc FinishStepUp(FinishStepUpRequest) returns (FinishStepUpResponse);
+
+  // BeginTotpEnrollment generates a new TOTP secret (not active until confirmed).
+  rpc BeginTotpEnrollment(BeginTotpEnrollmentRequest) returns (BeginTotpEnrollmentResponse);
+  // ConfirmTotpEnrollment activates the TOTP secret after verifying a code.
+  rpc ConfirmTotpEnrollment(ConfirmTotpEnrollmentRequest) returns (ConfirmTotpEnrollmentResponse);
+  // BeginPasskeyRegistration returns WebAuthn creation options.
+  rpc BeginPasskeyRegistration(BeginPasskeyRegistrationRequest) returns (BeginPasskeyRegistrationResponse);
+  // FinishPasskeyRegistration verifies and stores a new passkey.
+  rpc FinishPasskeyRegistration(FinishPasskeyRegistrationRequest) returns (FinishPasskeyRegistrationResponse);
+  // ListMfaMethods lists the caller's MFA methods.
+  rpc ListMfaMethods(ListMfaMethodsRequest) returns (ListMfaMethodsResponse);
+  // DeleteMfaMethod removes an MFA method (step-up required; the last method cannot be removed).
+  rpc DeleteMfaMethod(DeleteMfaMethodRequest) returns (DeleteMfaMethodResponse);
+  // RegenerateRecoveryCodes replaces all recovery codes (step-up required).
+  rpc RegenerateRecoveryCodes(RegenerateRecoveryCodesRequest) returns (RegenerateRecoveryCodesResponse);
+
+  // ChangePassword changes the caller's password and revokes all other sessions.
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+  // ListSessions lists the caller's active sessions.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  // RevokeSession ends one of the caller's sessions.
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
+
+  // AcceptInvite creates an account from an invitation link (unauthenticated).
+  rpc AcceptInvite(AcceptInviteRequest) returns (AcceptInviteResponse);
+}
+
+// SessionStage is how far a session has progressed through sign-in.
+enum SessionStage {
+  SESSION_STAGE_UNSPECIFIED = 0;
+  // Password verified; a second factor is required.
+  SESSION_STAGE_MFA_REQUIRED = 1;
+  // Password verified; the user must enroll a second factor before continuing.
+  SESSION_STAGE_MFA_ENROLLMENT = 2;
+  // Fully authenticated.
+  SESSION_STAGE_FULL = 3;
+}
+
+// MfaMethodType is a kind of second factor.
+enum MfaMethodType {
+  MFA_METHOD_TYPE_UNSPECIFIED = 0;
+  MFA_METHOD_TYPE_TOTP = 1;
+  MFA_METHOD_TYPE_PASSKEY = 2;
+  MFA_METHOD_TYPE_RECOVERY_CODE = 3;
+}
+
+// User is a Central account.
+message User {
+  string id = 1;
+  string email = 2;
+  string display_name = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp last_login_at = 5;
+  // Account disabled by an administrator.
+  bool disabled = 6;
+  // Has at least one MFA method.
+  bool mfa_enabled = 7;
+}
+
+// OrganizationRef is a compact organization reference.
+message OrganizationRef {
+  string id = 1;
+  string name = 2;
+  // Role names the caller holds in this organization.
+  repeated string roles = 3;
+}
+
+// LoginRequest carries primary credentials.
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+// LoginResponse tells the client what to do next.
+message LoginResponse {
+  SessionStage stage = 1;
+  // Second factors available (MFA_REQUIRED only).
+  repeated MfaMethodType mfa_methods = 2;
+}
+
+// VerifyTotpRequest carries a 6-digit TOTP code.
+message VerifyTotpRequest {
+  string code = 1;
+}
+
+// VerifyTotpResponse reports the new stage.
+message VerifyTotpResponse {
+  SessionStage stage = 1;
+}
+
+// UseRecoveryCodeRequest carries a recovery code.
+message UseRecoveryCodeRequest {
+  string code = 1;
+}
+
+// UseRecoveryCodeResponse reports the new stage and how many codes remain.
+message UseRecoveryCodeResponse {
+  SessionStage stage = 1;
+  uint32 remaining_codes = 2;
+}
+
+// BeginPasskeyLoginRequest starts a WebAuthn assertion.
+message BeginPasskeyLoginRequest {}
+
+// BeginPasskeyLoginResponse carries WebAuthn options.
+message BeginPasskeyLoginResponse {
+  // PublicKeyCredentialRequestOptions as JSON (pass to navigator.credentials.get after
+  // decoding base64url fields).
+  string options_json = 1;
+}
+
+// FinishPasskeyLoginRequest carries the WebAuthn assertion.
+message FinishPasskeyLoginRequest {
+  // PublicKeyCredential (assertion) as JSON with base64url-encoded binary fields.
+  string credential_json = 1;
+}
+
+// FinishPasskeyLoginResponse reports the new stage.
+message FinishPasskeyLoginResponse {
+  SessionStage stage = 1;
+}
+
+// LogoutRequest is empty.
+message LogoutRequest {}
+
+// LogoutResponse is empty.
+message LogoutResponse {}
+
+// GetSessionRequest is empty.
+message GetSessionRequest {}
+
+// GetSessionResponse describes the current session.
+message GetSessionResponse {
+  SessionStage stage = 1;
+  User user = 2;
+  OrganizationRef active_organization = 3;
+  repeated OrganizationRef organizations = 4;
+  // Effective permissions in the active organization (unscoped view; per-agent checks happen
+  // server-side). The UI uses these only to hide controls.
+  repeated string permissions = 5;
+  // Sensitive actions are allowed without re-authentication until this time.
+  google.protobuf.Timestamp step_up_valid_until = 6;
+  // Token to send in the X-CSRF-Token header.
+  string csrf_token = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  google.protobuf.Timestamp idle_expires_at = 9;
+}
+
+// SwitchOrganizationRequest selects an organization.
+message SwitchOrganizationRequest {
+  string organization_id = 1;
+}
+
+// SwitchOrganizationResponse is returned after switching.
+message SwitchOrganizationResponse {
+  OrganizationRef active_organization = 1;
+}
+
+// BeginStepUpRequest is empty.
+message BeginStepUpRequest {}
+
+// BeginStepUpResponse lists how the user can re-authenticate.
+message BeginStepUpResponse {
+  repeated MfaMethodType methods = 1;
+  // WebAuthn assertion options JSON when the user has a passkey.
+  string passkey_options_json = 2;
+}
+
+// FinishStepUpRequest carries one proof of presence.
+message FinishStepUpRequest {
+  oneof proof {
+    string totp_code = 1;
+    string passkey_credential_json = 2;
+  }
+}
+
+// FinishStepUpResponse reports how long sensitive actions are allowed.
+message FinishStepUpResponse {
+  google.protobuf.Timestamp step_up_valid_until = 1;
+}
+
+// BeginTotpEnrollmentRequest is empty.
+message BeginTotpEnrollmentRequest {}
+
+// BeginTotpEnrollmentResponse carries the new secret.
+message BeginTotpEnrollmentResponse {
+  string enrollment_id = 1;
+  // Base32 secret for manual entry.
+  string secret = 2;
+  // otpauth:// URI for QR codes (rendered client-side).
+  string otpauth_uri = 3;
+}
+
+// ConfirmTotpEnrollmentRequest verifies the authenticator.
+message ConfirmTotpEnrollmentRequest {
+  string enrollment_id = 1;
+  string code = 2;
+  // Label for the method, e.g. "Phone".
+  string name = 3;
+}
+
+// ConfirmTotpEnrollmentResponse returns recovery codes the first time MFA is enabled.
+message ConfirmTotpEnrollmentResponse {
+  string method_id = 1;
+  // Shown exactly once. Empty if the user already had recovery codes.
+  repeated string recovery_codes = 2;
+  SessionStage stage = 3;
+}
+
+// BeginPasskeyRegistrationRequest is empty.
+message BeginPasskeyRegistrationRequest {}
+
+// BeginPasskeyRegistrationResponse carries WebAuthn creation options.
+message BeginPasskeyRegistrationResponse {
+  // PublicKeyCredentialCreationOptions as JSON.
+  string options_json = 1;
+}
+
+// FinishPasskeyRegistrationRequest carries the attestation.
+message FinishPasskeyRegistrationRequest {
+  // Label for the passkey, e.g. "YubiKey 5C".
+  string name = 1;
+  // PublicKeyCredential (attestation) as JSON.
+  string credential_json = 2;
+}
+
+// FinishPasskeyRegistrationResponse returns recovery codes the first time MFA is enabled.
+message FinishPasskeyRegistrationResponse {
+  string method_id = 1;
+  repeated string recovery_codes = 2;
+  SessionStage stage = 3;
+}
+
+// MfaMethod is one registered second factor.
+message MfaMethod {
+  string id = 1;
+  MfaMethodType type = 2;
+  string name = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp last_used_at = 5;
+}
+
+// ListMfaMethodsRequest is empty.
+message ListMfaMethodsRequest {}
+
+// ListMfaMethodsResponse lists methods and remaining recovery codes.
+message ListMfaMethodsResponse {
+  repeated MfaMethod methods = 1;
+  uint32 recovery_codes_remaining = 2;
+}
+
+// DeleteMfaMethodRequest identifies the method.
+message DeleteMfaMethodRequest {
+  string method_id = 1;
+}
+
+// DeleteMfaMethodResponse is empty.
+message DeleteMfaMethodResponse {}
+
+// RegenerateRecoveryCodesRequest is empty.
+message RegenerateRecoveryCodesRequest {}
+
+// RegenerateRecoveryCodesResponse returns the new codes (shown once).
+message RegenerateRecoveryCodesResponse {
+  repeated string recovery_codes = 1;
+}
+
+// ChangePasswordRequest carries the current and new password.
+message ChangePasswordRequest {
+  string current_password = 1;
+  string new_password = 2;
+}
+
+// ChangePasswordResponse is empty.
+message ChangePasswordResponse {}
+
+// SessionInfo describes one of the caller's sessions.
+message SessionInfo {
+  string id = 1;
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp last_seen_at = 3;
+  string ip = 4;
+  string user_agent = 5;
+  // This is the session making the request.
+  bool current = 6;
+}
+
+// ListSessionsRequest is empty.
+message ListSessionsRequest {}
+
+// ListSessionsResponse lists sessions.
+message ListSessionsResponse {
+  repeated SessionInfo sessions = 1;
+}
+
+// RevokeSessionRequest identifies a session, or all other sessions.
+message RevokeSessionRequest {
+  string session_id = 1;
+  // Revoke every session except the current one (session_id ignored).
+  bool all_others = 2;
+}
+
+// RevokeSessionResponse is empty.
+message RevokeSessionResponse {}
+
+// AcceptInviteRequest creates an account from an invitation.
+message AcceptInviteRequest {
+  string invite_token = 1;
+  string display_name = 2;
+  string password = 3;
+}
+
+// AcceptInviteResponse is returned after the account was created; the client continues with
+// Login (and mandatory MFA enrollment).
+message AcceptInviteResponse {
+  string email = 1;
+}
