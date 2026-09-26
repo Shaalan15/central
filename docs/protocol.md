@@ -167,4 +167,4 @@ and policy-checks its own copy.
 
 `Hello.protocol_version` is `1`. Additive changes keep version 1 and are advertised via
 `Hello.features`. A breaking change would introduce `central.agent.v2` served side by side.
-`buf breaking` runs in CI against `main`.
+`buf breaking` runs in CI against `master`.
