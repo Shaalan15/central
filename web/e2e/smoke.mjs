@@ -64,7 +64,12 @@ page.on('console', (m) => {
 });
 const step = async (name, fn) => {
   process.stdout.write(`• ${name}… `);
-  await fn();
+  try {
+    await fn();
+  } catch (err) {
+    await page.screenshot({ path: join(OUT, 'failure.png') }).catch(() => {});
+    throw err;
+  }
   console.log('ok');
 };
 const shot = (name) => page.screenshot({ path: join(OUT, `${name}.png`) });
@@ -113,7 +118,7 @@ await step('TOTP enrollment', async () => {
   await page.getByText('Save these recovery codes').waitFor();
   await page.getByRole('button', { name: /I saved them/ }).click();
   await page.waitForURL(URL + '/');
-  await page.getByRole('heading', { name: 'Fleet' }).waitFor();
+  await page.getByRole('heading', { name: 'Overview' }).waitFor();
   await shot('06-dashboard-empty');
 });
 
@@ -190,31 +195,72 @@ if (SIM) {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.waitForTimeout(500);
     await shot('08-dashboard-dark');
-    await page.getByRole('button', { name: /Security updates/ }).click();
+    await page.locator('.stat', { hasText: 'Security updates' }).click();
     await page.waitForTimeout(300);
     await shot('09-dashboard-security-filter-dark');
-    await page.getByRole('button', { name: /Security updates/ }).click();
+    await page.locator('.stat', { hasText: 'Security updates' }).click();
   });
-  await step('host overview screenshots', async () => {
+  await step('host summary screenshots', async () => {
     await page.locator('.row').nth(2).click();
     await page.waitForURL('**/hosts/**/overview');
     await page.locator('app-chart canvas').first().waitFor();
     await page.waitForTimeout(1500);
-    await shot('10-host-overview-dark');
+    await shot('10-host-summary-dark');
+    await page.locator('.perf').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await shot('11-host-performance-dark');
     await page.emulateMedia({ colorScheme: 'light' });
+    await page.locator('.main').evaluate((el) => el.scrollTo(0, 0));
     await page.waitForTimeout(500);
-    await shot('11-host-overview-light');
-    await page
-      .getByRole('radio', { name: '24h' })
-      .click()
-      .catch(() => page.getByText('24h').click());
+    await shot('12-host-summary-light');
+    await page.getByRole('radio', { name: '24h' }).click();
+    await page.locator('.perf').scrollIntoViewIfNeeded();
     await page.waitForTimeout(800);
-    await shot('12-host-overview-24h-light');
+    await shot('13-host-performance-24h-light');
+  });
+  await step('sidebar host list: keyboard switches hosts and keeps the tab', async () => {
+    const before = page.url();
+    await page.locator('.host-nav .list').focus();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForURL((u) => u.href !== before && /\/hosts\/[^/]+\/overview$/.test(u.pathname));
+    await page.locator('.host.selected').waitFor();
+  });
+  await step('sidebar collapses with [ and Ctrl+K finds a host', async () => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.locator('.main').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('[');
+    await page.locator('.sidebar.rail').waitFor();
+    await page.waitForTimeout(300);
+    await shot('14-sidebar-collapsed-dark');
+    await page.keyboard.press('Control+k');
+    await page.getByRole('dialog', { name: 'Go to host or page' }).waitFor();
+    await page.keyboard.type('sim-01');
+    await page.waitForTimeout(200);
+    await shot('15-palette-dark');
+    const before = page.url();
+    await page.keyboard.press('Enter');
+    await page.getByRole('dialog', { name: 'Go to host or page' }).waitFor({ state: 'detached' });
+    await page.waitForURL((u) => u.href !== before && u.pathname.startsWith('/hosts/'));
+    await page.keyboard.press('[');
+    await page.locator('.sidebar:not(.rail)').waitFor();
+  });
+  await step('mobile layout', async () => {
+    await page.emulateMedia({ colorScheme: 'light' });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(URL + '/');
-    await page.getByRole('heading', { name: 'Fleet' }).waitFor();
+    await page.getByRole('heading', { name: 'Overview' }).waitFor();
     await page.waitForTimeout(800);
-    await shot('13-dashboard-mobile');
+    await shot('16-dashboard-mobile');
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.locator('.sidebar.open').waitFor();
+    await page.waitForTimeout(300);
+    await shot('17-drawer-mobile');
+    await page.locator('.host-nav .host').first().click();
+    await page.waitForURL('**/hosts/**');
+    await page.locator('app-chart canvas').first().waitFor();
+    await page.waitForTimeout(800);
+    await shot('18-host-mobile');
   });
 }
 

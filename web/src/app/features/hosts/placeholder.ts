@@ -13,26 +13,23 @@ import { Icon } from '../../shared/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
-      <div class="card empty">
-        <app-icon name="schedule" [size]="36" />
-        <h2>{{ title }}</h2>
-        <p class="muted">This screen is part of the next UI milestone.</p>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>{{ title }}</h2>
+        </div>
+        <p class="panel-body faint">
+          <app-icon name="schedule" [size]="16" /> This screen is part of the next UI milestone.
+        </p>
       </div>
     </div>
   `,
   styles: `
-    .empty {
-      display: grid;
-      justify-items: center;
+    .panel-body {
+      display: flex;
+      align-items: center;
       gap: 6px;
-      padding: 48px 16px;
-      text-align: center;
-      color: var(--mat-sys-on-surface-variant);
-    }
-    h2 {
       margin: 0;
-      color: var(--mat-sys-on-surface);
-      font: var(--mat-sys-title-medium);
+      padding: 16px 10px;
     }
   `,
 })

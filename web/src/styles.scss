@@ -3,11 +3,51 @@
 
 @use '@angular/material' as mat;
 
-// Material 3 theme. Colors follow the OS light/dark preference via `color-scheme`;
-// the app shell can force a scheme by setting `color-scheme` on <html>.
+// Design language: a dense, utilitarian operations console. Neutral surfaces separated by
+// 1px borders, one accent for selection and primary actions, and color reserved for status.
+// Every color is a light-dark() pair, so the OS preference (or the shell's forced
+// theme-light/theme-dark class) switches the whole UI, including Material components.
+
 html {
   color-scheme: light dark;
   height: 100%;
+
+  // App tokens. Components use these rather than Material's system tokens.
+  --bg: light-dark(#eceef1, #0e1013);
+  --panel: light-dark(#ffffff, #16191d);
+  --panel-2: light-dark(#f6f7f9, #1c2025);
+  --hover: light-dark(#eef1f5, #22272e);
+  --border: light-dark(#d8dce2, #292e35);
+  --border-strong: light-dark(#bfc5cd, #3a4049);
+  --text: light-dark(#1b1f24, #d6dae0);
+  --text-2: light-dark(#58606b, #99a1ac);
+  --text-3: light-dark(#8b929c, #6b727c);
+  --accent: light-dark(#1d5fc7, #5a91ee);
+  --accent-text: light-dark(#ffffff, #0b1320);
+  --accent-bg: light-dark(#e3ecfb, #1a2840);
+  --ok: light-dark(#1f8a3b, #58b36a);
+  --warn: light-dark(#b66a00, #e5a13a);
+  --crit: light-dark(#c42d45, #f0566b);
+  --info: light-dark(#1d5fc7, #5a91ee);
+  --track: light-dark(#e2e5ea, #262b32);
+  // Chart series (categorical, in this order).
+  --s1: light-dark(#1d5fc7, #5a91ee);
+  --s2: light-dark(#0e8a7a, #3cc3ae);
+  --s3: light-dark(#b8610a, #eea04a);
+  --s4: light-dark(#7b4bc4, #b28cf0);
+
+  --font: 'Inter Variable', system-ui, sans-serif;
+  --mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --fs: 13px;
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+  --radius: 3px;
+  --row: 26px;
+  --control: 28px;
+
+  // Legacy aliases used by a few components.
+  --app-ok: var(--ok);
+  --app-warn: var(--warn);
 
   @include mat.theme(
     (
@@ -19,7 +59,136 @@ html {
         plain-family: 'Inter Variable',
         brand-family: 'Inter Variable',
       ),
-      density: -2,
+      density: -3,
+    )
+  );
+
+  // Material system tokens mapped onto the app palette.
+  @include mat.theme-overrides(
+    (
+      primary: var(--accent),
+      on-primary: var(--accent-text),
+      primary-container: var(--accent-bg),
+      on-primary-container: var(--text),
+      secondary-container: var(--accent-bg),
+      on-secondary-container: var(--text),
+      surface: var(--panel),
+      surface-dim: var(--bg),
+      surface-bright: var(--panel),
+      surface-container-lowest: var(--panel),
+      surface-container-low: var(--panel),
+      surface-container: var(--panel),
+      surface-container-high: var(--panel-2),
+      surface-container-highest: var(--hover),
+      on-surface: var(--text),
+      on-surface-variant: var(--text-2),
+      outline: var(--border-strong),
+      outline-variant: var(--border),
+      error: var(--crit),
+      on-error: #fff,
+      error-container: light-dark(#fbe4e8, #3a1a20),
+      on-error-container: var(--crit),
+      inverse-surface: light-dark(#23272e, #e4e7eb),
+      inverse-on-surface: light-dark(#f2f3f5, #16191d),
+      corner-extra-small: 2px,
+      corner-small: 3px,
+      corner-medium: 4px,
+      corner-large: 4px,
+      corner-large-increased: 4px,
+      corner-extra-large: 6px,
+      corner-full: 3px,
+      body-large-size: 14px,
+      body-medium-size: 13px,
+      body-small-size: 12px,
+      label-large-size: 13px,
+      label-medium-size: 12px,
+      label-small-size: 11px,
+      label-large-tracking: 0,
+      label-medium-tracking: 0,
+      label-small-tracking: 0,
+      body-medium-tracking: 0,
+      body-small-tracking: 0,
+      body-large-tracking: 0,
+      title-small-size: 13px,
+      title-medium-size: 14px,
+      title-medium-tracking: 0,
+      title-large-size: 16px,
+      headline-small-size: 18px,
+    )
+  );
+
+  @include mat.button-overrides(
+    (
+      filled-container-height: 28px,
+      outlined-container-height: 28px,
+      text-container-height: 28px,
+      tonal-container-height: 28px,
+      protected-container-height: 28px,
+      filled-horizontal-padding: 12px,
+      outlined-horizontal-padding: 10px,
+      text-horizontal-padding: 8px,
+      filled-label-text-weight: 500,
+      outlined-label-text-weight: 500,
+      text-label-text-weight: 500,
+      outlined-outline-color: var(--border-strong),
+    )
+  );
+  @include mat.icon-button-overrides(
+    (
+      state-layer-size: 28px,
+      icon-size: 18px,
+    )
+  );
+  @include mat.form-field-overrides(
+    (
+      container-height: 34px,
+      container-vertical-padding: 6px,
+      outlined-outline-color: var(--border-strong),
+      outlined-hover-outline-color: var(--text-3),
+      outlined-focus-outline-width: 1px,
+      container-text-size: 13px,
+      outlined-label-text-size: 13px,
+      subscript-text-size: 12px,
+    )
+  );
+  @include mat.tabs-overrides(
+    (
+      container-height: 34px,
+      label-text-size: 13px,
+      label-text-tracking: 0,
+      active-indicator-height: 2px,
+      active-indicator-shape: 0,
+      divider-height: 1px,
+      divider-color: var(--border),
+    )
+  );
+  @include mat.menu-overrides(
+    (
+      container-shape: 4px,
+      item-label-text-size: 13px,
+      item-label-text-tracking: 0,
+      container-color: var(--panel),
+    )
+  );
+  @include mat.dialog-overrides(
+    (
+      container-shape: 4px,
+      container-color: var(--panel),
+    )
+  );
+  @include mat.tooltip-overrides(
+    (
+      container-shape: 3px,
+      supporting-text-size: 12px,
+    )
+  );
+  @include mat.button-toggle-overrides(
+    (
+      shape: 3px,
+      height: 26px,
+      label-text-size: 12px,
+      label-text-tracking: 0,
+      selected-state-background-color: var(--accent-bg),
     )
   );
 }
@@ -35,10 +204,21 @@ html.theme-dark {
 body {
   height: 100%;
   margin: 0;
-  background: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
-  font: var(--mat-sys-body-medium);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+a {
+  color: var(--accent);
 }
 
 // Tabular numerals keep live metrics from jittering as values change.
@@ -46,67 +226,330 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-// ---- Shared layout helpers ----------------------------------------------------------------
-
-:root {
-  --app-warn: #d97706;
-  --app-ok: #16a34a;
-  --app-radius: 12px;
-}
-
 .muted {
-  color: var(--mat-sys-on-surface-variant);
+  color: var(--text-2);
+}
+.faint {
+  color: var(--text-3);
 }
 .error {
-  color: var(--mat-sys-error);
+  color: var(--crit);
 }
 .mono {
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-family: var(--mono);
+  font-size: 0.95em;
+}
+.small {
+  font-size: var(--fs-sm);
+}
+code {
+  font-family: var(--mono);
+  font-size: 0.95em;
 }
 
-// Auth and setup pages: a centered card on a subtle background.
+// ---- Status -------------------------------------------------------------------------------
+
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  &.ok {
+    background: var(--ok);
+  }
+  &.warn {
+    background: var(--warn);
+  }
+  &.crit {
+    background: var(--crit);
+  }
+}
+.ok-text {
+  color: var(--ok);
+}
+.warn-text {
+  color: var(--warn);
+}
+.crit-text {
+  color: var(--crit);
+}
+
+// Small bordered label for tags, profiles and states.
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  white-space: nowrap;
+  &.accent {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent);
+    background: transparent;
+  }
+  &.warn {
+    border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+    color: var(--warn);
+    background: transparent;
+  }
+  &.crit {
+    border-color: color-mix(in srgb, var(--crit) 50%, transparent);
+    color: var(--crit);
+    background: transparent;
+  }
+  &.ok {
+    border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+    color: var(--ok);
+    background: transparent;
+  }
+}
+// Older markup still uses .chip; render it as a tag.
+.chip {
+  @extend .tag;
+  &.primary {
+    @extend .accent;
+  }
+  &.danger {
+    @extend .crit;
+  }
+}
+
+// ---- Panels -------------------------------------------------------------------------------
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs);
+  font-weight: 600;
+  h2,
+  h3 {
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .aside {
+    margin-left: auto;
+    font-weight: 400;
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+  }
+}
+.panel-body {
+  padding: 8px 10px;
+}
+// .card is the older name for a padded panel.
+.card {
+  @extend .panel;
+  padding: 10px 12px;
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 8px;
+    font-size: var(--fs);
+    font-weight: 600;
+  }
+}
+
+// Key/value property sheet (Proxmox-style status panels).
+.kv {
+  display: grid;
+  grid-template-columns: minmax(110px, max-content) 1fr;
+  margin: 0;
+  > dt,
+  > dd {
+    margin: 0;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    min-width: 0;
+  }
+  > dt {
+    padding-right: 16px;
+    color: var(--text-2);
+  }
+  > dd {
+    overflow-wrap: anywhere;
+  }
+  > dt:nth-last-of-type(1),
+  > dd:last-of-type {
+    border-bottom: 0;
+  }
+}
+.dl {
+  @extend .kv;
+}
+
+// Dense data table.
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs);
+  th,
+  td {
+    height: var(--row);
+    padding: 0 10px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--panel-2);
+    color: var(--text-2);
+    font-weight: 500;
+    font-size: var(--fs-sm);
+  }
+  td.num,
+  th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  tbody tr:hover {
+    background: var(--hover);
+  }
+}
+
+// Command bar: a row of compact actions above a view.
+.cmdbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  .sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 2px;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .mat-mdc-button-base .app-icon {
+    margin-right: 4px;
+  }
+}
+
+// Page scaffolding inside the app shell.
+.page {
+  padding: 12px 16px 24px;
+  box-sizing: border-box;
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  h1 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  p {
+    margin: 2px 0 0;
+    color: var(--text-2);
+  }
+}
+
+// Plain input used outside Material form fields (filters, search boxes).
+.input {
+  box-sizing: border-box;
+  height: var(--control);
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+  &::placeholder {
+    color: var(--text-3);
+  }
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+}
+
+kbd {
+  display: inline-block;
+  min-width: 14px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font-family: var(--font);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  color: var(--text-2);
+  background: var(--panel-2);
+}
+
+// ---- Sign-in and setup pages ----------------------------------------------------------------
+
 .auth-page {
   min-height: 100%;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 24px 16px;
   box-sizing: border-box;
-  background:
-    radial-gradient(
-      1200px 600px at 10% -10%,
-      color-mix(in srgb, var(--mat-sys-primary) 14%, transparent),
-      transparent
-    ),
-    var(--mat-sys-surface-container-lowest);
+  background: var(--bg);
 }
 
 .auth-card {
-  width: min(420px, 100%);
+  width: min(380px, 100%);
   box-sizing: border-box;
-  padding: 28px 28px 20px;
-  border-radius: 16px;
-  background: var(--mat-sys-surface-container-low);
-  border: 1px solid var(--mat-sys-outline-variant);
-  box-shadow: 0 10px 40px rgb(0 0 0 / 0.08);
+  padding: 20px 20px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
 
   &.wide {
-    width: min(640px, 100%);
+    width: min(600px, 100%);
   }
 
   .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-    color: var(--mat-sys-primary);
+    gap: 10px;
+    margin: -20px -20px 16px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
     h1 {
-      font: var(--mat-sys-title-large);
       margin: 0;
-      color: var(--mat-sys-on-surface);
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
     }
     p {
-      margin: 2px 0 0;
-      font: var(--mat-sys-body-small);
+      margin: 1px 0 0;
+      font-size: var(--fs-sm);
+      color: var(--text-2);
     }
   }
   mat-progress-bar {
@@ -115,17 +558,17 @@ body {
   .form {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
   }
   .form > p {
     margin: 0;
-    color: var(--mat-sys-on-surface-variant);
+    color: var(--text-2);
   }
   .actions {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 8px;
+    margin-top: 4px;
   }
   .actions.stretch {
     flex-direction: column;
@@ -134,15 +577,15 @@ body {
   .divider {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     margin: 12px 0 4px;
-    color: var(--mat-sys-on-surface-variant);
-    font: var(--mat-sys-label-medium);
+    color: var(--text-3);
+    font-size: var(--fs-sm);
     &::before,
     &::after {
       content: '';
       flex: 1;
-      border-top: 1px solid var(--mat-sys-outline-variant);
+      border-top: 1px solid var(--border);
     }
   }
   .link {
@@ -154,91 +597,26 @@ body {
   }
 }
 
-// Page scaffolding inside the app shell.
-.page {
-  padding: 20px 24px 32px;
-  box-sizing: border-box;
-  max-width: 1600px;
-  margin: 0 auto;
+// ---- Material component tweaks -------------------------------------------------------------
+
+.mat-mdc-button-base {
+  letter-spacing: 0;
 }
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-  h1 {
-    font: var(--mat-sys-headline-small);
-    margin: 0;
-  }
-  p {
-    margin: 2px 0 0;
-  }
+.mat-mdc-menu-item .app-icon {
+  margin-right: 10px;
+  color: var(--text-2);
 }
-.card {
-  background: var(--mat-sys-surface-container-low);
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: var(--app-radius);
-  padding: 16px;
-  min-width: 0;
-  h2 {
-    font: var(--mat-sys-title-small);
-    margin: 0 0 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-}
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font: var(--mat-sys-label-small);
-  background: var(--mat-sys-surface-container-highest);
-  color: var(--mat-sys-on-surface-variant);
-  white-space: nowrap;
-  &.primary {
-    background: var(--mat-sys-primary-container);
-    color: var(--mat-sys-on-primary-container);
-  }
-  &.warn {
-    background: color-mix(in srgb, var(--app-warn) 18%, transparent);
-    color: var(--app-warn);
-  }
-  &.danger {
-    background: var(--mat-sys-error-container);
-    color: var(--mat-sys-on-error-container);
-  }
-  &.ok {
-    background: color-mix(in srgb, var(--app-ok) 16%, transparent);
-    color: var(--app-ok);
-  }
-}
-.dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px 16px;
-  margin: 0;
-  dt {
-    color: var(--mat-sys-on-surface-variant);
-    font: var(--mat-sys-body-small);
-  }
-  dd {
-    margin: 0;
-    font: var(--mat-sys-body-medium);
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
+.mat-mdc-menu-item {
+  min-height: 32px !important;
 }
 
-// uPlot legend/axis colors follow the theme.
-.uplot,
-.u-legend {
-  font-family: 'Inter Variable', sans-serif;
-  color: var(--mat-sys-on-surface-variant);
+// uPlot inherits the app font.
+.uplot {
+  font-family: var(--font);
 }
-.u-legend {
-  font-size: 12px;
+
+// While the sidebar is being resized.
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
 }

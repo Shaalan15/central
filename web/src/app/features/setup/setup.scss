@@ -3,38 +3,54 @@
 
 .stepper {
   display: flex;
-  gap: 24px;
+  gap: 0;
   list-style: none;
   padding: 0;
-  margin: 8px 0 20px;
-  color: var(--mat-sys-on-surface-variant);
-  font: var(--mat-sys-label-large);
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
   li {
+    flex: 1;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-right: 1px solid var(--border);
+    &:last-child {
+      border-right: 0;
+    }
   }
+  // Step number box (not the global status dot).
   .dot {
     display: inline-grid;
     place-items: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: 1px solid var(--mat-sys-outline);
-    font: var(--mat-sys-label-small);
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    font-size: 10px;
   }
   .active {
-    color: var(--mat-sys-on-surface);
+    color: var(--text);
+    background: var(--accent-bg);
+    font-weight: 500;
   }
   .active .dot {
-    background: var(--mat-sys-primary);
-    color: var(--mat-sys-on-primary);
+    background: var(--accent);
+    color: var(--accent-text);
     border-color: transparent;
   }
-  .done .dot {
-    background: var(--mat-sys-primary-container);
-    color: var(--mat-sys-on-primary-container);
-    border-color: transparent;
+  li.done {
+    color: var(--text-2);
+    text-align: left;
+  }
+  li.done .dot {
+    color: var(--ok);
+    border-color: var(--ok);
   }
 }
 .choice,
@@ -54,31 +70,31 @@
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--mat-sys-error-container);
-  color: var(--mat-sys-on-error-container);
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--crit) 45%, transparent);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--crit) 6%, transparent);
+  color: var(--text);
   &.ok {
-    background: var(--mat-sys-primary-container);
-    color: var(--mat-sys-on-primary-container);
+    border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+    background: color-mix(in srgb, var(--ok) 6%, transparent);
   }
 }
 .done {
   text-align: center;
   align-items: center;
-  color: var(--mat-sys-on-surface);
+  color: var(--text);
   app-icon {
-    color: var(--mat-sys-primary);
+    color: var(--ok);
   }
-}
-code {
-  font-family: ui-monospace, monospace;
 }
 @media (max-width: 640px) {
   .row {
     grid-template-columns: 1fr;
   }
-  .stepper {
-    gap: 12px;
+  .stepper li {
+    padding: 0 6px;
+    font-size: var(--fs-xs);
   }
 }

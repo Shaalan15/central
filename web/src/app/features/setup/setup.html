@@ -1,7 +1,7 @@
 <main class="auth-page">
   <section class="auth-card wide" aria-labelledby="setup-title">
     <header class="brand">
-      <app-icon name="hub" [size]="28" />
+      <app-icon name="hub" [size]="18" />
       <div>
         <h1 id="setup-title">Set up Central</h1>
         <p class="muted">{{ version() ? 'Version ' + version() : 'First start' }}</p>
@@ -236,7 +236,7 @@
       }
       @case ('done') {
         <div class="form done">
-          <app-icon name="verified_user" [size]="48" />
+          <app-icon name="verified_user" [size]="28" />
           <h2>Central is ready</h2>
           <p>
             Sign in to finish: you will set up two-factor authentication, then download your key

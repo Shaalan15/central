@@ -1,181 +1,174 @@
-<div class="page fleet">
+<div class="fleet">
   <header class="page-header">
     <div>
-      <h1>Fleet</h1>
-      <p class="muted">{{ summary()?.total ?? 0 }} hosts in {{ session.org()?.name }}</p>
+      <h1>Overview</h1>
+      <p>{{ counts().all }} hosts in {{ session.org()?.name }}</p>
     </div>
-    @if (session.can('tokens.manage')) {
-      <a mat-flat-button routerLink="/enrollment" class="add"
-        ><app-icon name="add" /><span class="add-label">Add hosts</span></a
-      >
-    }
+    <div class="cmdbar">
+      @if ((summary()?.pendingEnrollments ?? 0) > 0 && session.can('agents.approve')) {
+        <a mat-stroked-button routerLink="/approvals" class="pending"
+          ><app-icon name="how_to_reg" [size]="16" /> {{ summary()?.pendingEnrollments }} waiting
+          for approval</a
+        >
+      }
+      @if (session.can('tokens.manage')) {
+        <a mat-flat-button routerLink="/enrollment"
+          ><app-icon name="add" [size]="16" /> Add hosts</a
+        >
+      }
+    </div>
   </header>
 
-  @if ((summary()?.pendingEnrollments ?? 0) > 0 && session.can('agents.approve')) {
-    <a class="banner" routerLink="/approvals">
-      <app-icon name="how_to_reg" />
-      <span
-        ><strong>{{ summary()?.pendingEnrollments }}</strong> host(s) waiting for approval</span
-      >
-      <app-icon name="chevron_right" />
-    </a>
-  }
-
-  <section class="tiles" aria-label="Fleet summary">
-    @for (t of tiles(); track t.id) {
+  <section class="stats" aria-label="Fleet status">
+    @for (s of stats(); track s.id) {
       <button
         type="button"
-        class="tile"
-        [class.selected]="quick() === t.id"
-        [attr.data-tone]="t.tone"
-        (click)="setQuick(t.id)"
-        [attr.aria-pressed]="quick() === t.id"
+        class="stat panel"
+        [class.selected]="filter() === s.id"
+        [attr.aria-pressed]="filter() === s.id"
+        (click)="toggleFilter(s.id)"
       >
-        <span class="tile-head"><app-icon [name]="t.icon" [size]="18" /> {{ t.label }}</span>
-        <span class="tile-value tabular-nums">{{ t.value }}</span>
-        @if (t.sub) {
-          <span class="tile-sub">{{ t.sub }}</span>
-        }
+        <span class="stat-label">{{ s.label }}</span>
+        <span class="stat-value tabular-nums" [class]="s.tone ? s.tone + '-text' : ''">{{
+          s.value
+        }}</span>
+        <span class="stat-sub faint">{{ s.sub ?? ' ' }}</span>
       </button>
     }
   </section>
 
-  <section class="table card" aria-label="Hosts">
-    <div class="toolbar">
-      <label class="search">
-        <app-icon name="search" />
-        <input
-          type="search"
-          placeholder="Search name, IP, OS or tag"
-          [ngModel]="query()"
-          (ngModelChange)="query.set($event)"
-          aria-label="Search hosts"
-        />
-      </label>
-      @if (quick() !== 'all') {
-        <button type="button" class="chip primary filter" (click)="quick.set('all')">
-          {{ quick() }} <app-icon name="close" [size]="14" />
+  <section class="panel hosts" aria-label="Hosts">
+    <div class="panel-head">
+      <input
+        #q
+        class="input search"
+        type="search"
+        placeholder="Filter by name, IP, OS or tag"
+        aria-label="Filter hosts"
+        [value]="query()"
+        (input)="query.set(q.value)"
+      />
+      <button mat-stroked-button [matMenuTriggerFor]="showMenu" class="show">
+        {{ filterLabels[filter()] }} <app-icon name="keyboard_arrow_down" [size]="16" />
+      </button>
+      <span class="aside tabular-nums">{{ rows().length }} of {{ counts().all }}</span>
+    </div>
+    <mat-menu #showMenu="matMenu">
+      @for (f of filters; track f) {
+        <button mat-menu-item (click)="filter.set(f)">
+          <span class="menu-row"
+            ><span>{{ filterLabels[f] }}</span
+            ><span class="faint tabular-nums">{{ counts()[f] }}</span></span
+          >
         </button>
       }
-      <span class="muted count tabular-nums">{{ rows().length }} shown</span>
-    </div>
+    </mat-menu>
 
-    <div class="grid head" role="row">
-      <button type="button" class="sort" (click)="sortBy('name')" [class.on]="sort() === 'name'">
-        Host
-      </button>
-      <span>System</span>
-      <button type="button" class="sort" (click)="sortBy('cpu')" [class.on]="sort() === 'cpu'">
-        CPU
-      </button>
-      <button
-        type="button"
-        class="sort"
-        (click)="sortBy('memory')"
-        [class.on]="sort() === 'memory'"
-      >
-        Memory
-      </button>
-      <button type="button" class="sort" (click)="sortBy('disk')" [class.on]="sort() === 'disk'">
-        Disk
-      </button>
-      <button
-        type="button"
-        class="sort"
-        (click)="sortBy('updates')"
-        [class.on]="sort() === 'updates'"
-      >
-        Updates
-      </button>
-      <span>Policy</span>
-      <button
-        type="button"
-        class="sort right"
-        (click)="sortBy('seen')"
-        [class.on]="sort() === 'seen'"
-      >
-        Uptime
-      </button>
-    </div>
-
-    @if (store.list().length === 0) {
-      <div class="empty">
-        <app-icon name="dns" [size]="40" />
-        <h2>No hosts yet</h2>
-        <p class="muted">
-          Create an enrollment token and install the agent on your Ubuntu or Debian servers.
-        </p>
-        @if (session.can('tokens.manage')) {
-          <a mat-flat-button routerLink="/enrollment">Add your first host</a>
-        }
+    <div class="scroller">
+      <div class="grid head" role="row">
+        <button type="button" (click)="sortBy('name')">
+          Host
+          @if (sortIcon('name'); as i) {
+            <app-icon [name]="i" [size]="12" />
+          }
+        </button>
+        <span>Address</span>
+        <span>Operating system</span>
+        <button type="button" (click)="sortBy('cpu')">
+          CPU
+          @if (sortIcon('cpu'); as i) {
+            <app-icon [name]="i" [size]="12" />
+          }
+        </button>
+        <button type="button" (click)="sortBy('memory')">
+          Memory
+          @if (sortIcon('memory'); as i) {
+            <app-icon [name]="i" [size]="12" />
+          }
+        </button>
+        <button type="button" (click)="sortBy('disk')">
+          Disk
+          @if (sortIcon('disk'); as i) {
+            <app-icon [name]="i" [size]="12" />
+          }
+        </button>
+        <span class="num">Load</span>
+        <button type="button" class="num" (click)="sortBy('updates')">
+          Updates
+          @if (sortIcon('updates'); as i) {
+            <app-icon [name]="i" [size]="12" />
+          }
+        </button>
+        <span class="num">Security</span>
+        <span>Policy</span>
+        <button type="button" class="num" (click)="sortBy('seen')">
+          Uptime
+          @if (sortIcon('seen'); as i) {
+            <app-icon [name]="i" [size]="12" />
+          }
+        </button>
       </div>
-    } @else {
-      <cdk-virtual-scroll-viewport itemSize="56" class="viewport">
-        <a
-          *cdkVirtualFor="let a of rows(); trackBy: trackId"
-          class="grid row"
-          role="row"
-          [routerLink]="['/hosts', a.id]"
-        >
-          <span class="host">
-            <span
-              class="status"
-              [class.on]="a.connection === online"
-              [matTooltip]="a.connection === online ? 'Online' : 'Offline'"
-            ></span>
-            <span class="names">
-              <strong>{{ a.name }}</strong>
-              <span class="muted mono">{{ a.primaryIp || a.hostname }}</span>
-            </span>
-          </span>
-          <span class="system">
-            <span>{{ a.osPrettyName || '—' }}</span>
-            <span class="tags">
-              @for (t of a.tags.slice(0, 3); track t) {
-                <span class="chip">{{ t }}</span>
+
+      @if (store.list().length === 0) {
+        <div class="empty">
+          <p><strong>No hosts yet.</strong></p>
+          <p class="muted">
+            Create an enrollment token, then install the agent on your Ubuntu or Debian servers.
+          </p>
+          @if (session.can('tokens.manage')) {
+            <a mat-flat-button routerLink="/enrollment">Add hosts</a>
+          }
+        </div>
+      } @else {
+        <cdk-virtual-scroll-viewport itemSize="28" class="viewport">
+          <a
+            *cdkVirtualFor="let a of rows(); trackBy: trackId"
+            class="grid row"
+            role="row"
+            [class.offline]="!online(a)"
+            [routerLink]="['/hosts', a.id]"
+          >
+            <span class="name"
+              ><span class="dot" [class.ok]="online(a)"></span><strong>{{ a.name }}</strong>
+              @if (a.rebootRequired) {
+                <app-icon
+                  class="warn-text"
+                  name="restart_alt"
+                  [size]="13"
+                  label="Reboot required"
+                />
+              }
+              @for (t of a.tags.slice(0, 2); track t) {
+                <span class="tag">{{ t }}</span>
               }
             </span>
-          </span>
-          <app-meter
-            [value]="a.cpuPercent"
-            [unknown]="a.connection !== online"
-            [title]="'Load ' + a.load1.toFixed(2) + ' on ' + a.cpuThreads + ' threads'"
-          />
-          <app-meter [value]="a.memoryUsedPercent" [unknown]="a.connection !== online" />
-          <app-meter
-            [value]="a.diskUsedPercentMax"
-            [unknown]="a.connection !== online"
-            title="Fullest filesystem"
-          />
-          <span class="updates">
-            @if (a.securityUpdates) {
-              <span class="chip danger" [matTooltip]="a.securityUpdates + ' security updates'"
-                ><app-icon name="security" [size]="14" /> {{ a.securityUpdates }}</span
-              >
-            }
-            @if (a.updatesAvailable) {
-              <span class="chip">{{ a.updatesAvailable }}</span>
-            } @else {
-              <span class="muted">Up to date</span>
-            }
-            @if (a.rebootRequired) {
-              <span class="chip warn" matTooltip="Reboot required"
-                ><app-icon name="restart_alt" [size]="14"
-              /></span>
-            }
-          </span>
-          <span>
+            <span class="mono muted">{{ a.primaryIp }}</span>
+            <span class="muted ellipsis">{{ a.osPrettyName || '—' }}</span>
+            <app-meter [value]="a.cpuPercent" [unknown]="!online(a)" />
+            <app-meter [value]="a.memoryUsedPercent" [unknown]="!online(a)" />
+            <app-meter [value]="a.diskUsedPercentMax" [unknown]="!online(a)" />
+            <span class="num tabular-nums">{{ online(a) ? a.load1.toFixed(2) : '—' }}</span>
+            <span class="num tabular-nums" [class.faint]="!a.updatesAvailable">{{
+              a.updatesAvailable
+            }}</span>
             <span
-              class="chip"
-              [class.primary]="a.policyProfile === 4"
-              [class.warn]="a.policyPaused"
+              class="num tabular-nums"
+              [class.crit-text]="a.securityUpdates"
+              [class.faint]="!a.securityUpdates"
+              >{{ a.securityUpdates }}</span
             >
-              {{ a.policyPaused ? 'Paused' : (profiles[a.policyProfile] ?? '—') }}
-            </span>
-          </span>
-          <span class="right muted tabular-nums">{{ uptime(a) }}</span>
-        </a>
-      </cdk-virtual-scroll-viewport>
-    }
+            <span
+              ><span
+                class="tag"
+                [class.accent]="a.policyProfile === 4"
+                [class.warn]="a.policyPaused"
+                >{{ a.policyPaused ? 'Paused' : (profiles[a.policyProfile] ?? '—') }}</span
+              ></span
+            >
+            <span class="num tabular-nums muted">{{ uptime(a) }}</span>
+          </a>
+        </cdk-virtual-scroll-viewport>
+      }
+    </div>
   </section>
 </div>
