@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	agentv1 "github.com/Shaalan15/central/gen/go/central/agent/v1"
 	apiv1 "github.com/Shaalan15/central/gen/go/central/api/v1"
@@ -36,13 +37,30 @@ type agentClients struct {
 	host    apiv1connect.HostServiceClient
 }
 
+// headerInterceptor adds request headers (credentials, CSRF token) to unary and streaming calls.
+type headerInterceptor func(http.Header)
+
+func (h headerInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		h(req.Header())
+		return next(ctx, req)
+	}
+}
+
+func (h headerInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		h(conn.RequestHeader())
+		return conn
+	}
+}
+
+func (h headerInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
 func newAgentClients(hc *http.Client, base string, header func(http.Header)) agentClients {
-	opt := connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			header(req.Header())
-			return next(ctx, req)
-		}
-	}))
+	opt := connect.WithInterceptors(headerInterceptor(header))
 	return agentClients{
 		enroll:  apiv1connect.NewEnrollmentAdminServiceClient(hc, base+"/api", opt),
 		fleet:   apiv1connect.NewFleetServiceClient(hc, base+"/api", opt),
@@ -215,6 +233,56 @@ func TestAgentManagementAPI(t *testing.T) {
 	if m, err := bot.metrics.GetAgentMetrics(ctx, connect.NewRequest(&apiv1.GetAgentMetricsRequest{AgentId: agentID})); err != nil ||
 		m.Msg.GetSeries().GetResolution() != apiv1.MetricsResolution_METRICS_RESOLUTION_RAW {
 		t.Fatalf("metrics: %v %v", m, err)
+	}
+
+	// Seeing what a command did needs its operation's permission: the operator key (no
+	// files.read) sees that a file was read on its agent, but not which file or its contents.
+	readFile := &agentv1.Operation{Kind: &agentv1.Operation_FileRead{FileRead: &agentv1.FileRead{Path: "/etc/hostname"}}}
+	fr, err := oc.host.RunOperation(ctx, connect.NewRequest(&apiv1.RunOperationRequest{
+		AgentId: agentID, Operation: readFile, Wait: durationpb.New(0),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readID := fr.Msg.GetCommand().GetCommandId()
+	find := func(c agentClients) *apiv1.CommandRecord {
+		t.Helper()
+		h, err := c.host.ListCommands(ctx, connect.NewRequest(&apiv1.ListCommandsRequest{AgentId: agentID}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range h.Msg.GetCommands() {
+			if r.GetCommandId() == readID {
+				return r
+			}
+		}
+		t.Fatal("command not listed")
+		return nil
+	}
+	if r := find(bot); r.GetOperationType() != "file_read" || r.GetOperation() != nil || r.GetResult() != nil {
+		t.Fatalf("operator sees file_read details: %v", r)
+	}
+	if r := find(oc); r.GetOperation().GetFileRead().GetPath() != "/etc/hostname" {
+		t.Fatalf("owner misses file_read details: %v", r)
+	}
+	botWatch, err := bot.host.WatchCommand(ctx, connect.NewRequest(&apiv1.WatchCommandRequest{CommandId: readID}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if botWatch.Receive() || code(botWatch.Err()) != connect.CodePermissionDenied {
+		t.Fatalf("operator watched file_read output: %v", botWatch.Err())
+	}
+	_ = botWatch.Close()
+	ownerWatch, err := oc.host.WatchCommand(ctx, connect.NewRequest(&apiv1.WatchCommandRequest{CommandId: readID}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ownerWatch.Receive() || ownerWatch.Msg().GetUpdate().GetCommandId() != readID {
+		t.Fatalf("owner watch: %v", ownerWatch.Err())
+	}
+	_ = ownerWatch.Close()
+	if _, err := bot.host.CancelCommand(ctx, connect.NewRequest(&apiv1.CancelCommandRequest{CommandId: readID})); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("operator cancelled file_read: %v", err)
 	}
 
 	// Summary, then revocation (step-up) removes the agent from the default list.

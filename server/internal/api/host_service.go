@@ -168,8 +168,27 @@ func (s *HostService) RunOperation(ctx context.Context, req *connect.Request[api
 	return connect.NewResponse(&apiv1.RunOperationResponse{Command: commandProto(&rec)}), nil
 }
 
-// command loads a command and checks perm on its agent.
-func (s *HostService) command(ctx context.Context, id string, perm func(*store.Command) string) (*authz.Principal, store.Command, error) {
+// opPerm is the permission that authorizes a command's operation. Seeing the command's
+// arguments, result and output needs it too: they can hold command output, file contents or
+// log lines that fleet.view alone must not reveal.
+func opPerm(c *store.Command) string {
+	if info, ok := ops.Lookup(c.OperationType); ok {
+		return info.Permission
+	}
+	return authz.AgentsManage
+}
+
+// commandMetaProto describes a command without its arguments, result or agent messages, for
+// callers who may see that it ran but not what it did or produced.
+func commandMetaProto(c *store.Command) *apiv1.CommandRecord {
+	m := *c
+	m.OperationProto, m.ResultProto, m.Status, m.ErrorMessage = nil, nil, "", ""
+	return commandProto(&m)
+}
+
+// command loads a command and checks its operation's permission on the agent: held for reading
+// it (stepUp false), or with a fresh step-up where the operation needs one (stepUp true).
+func (s *HostService) command(ctx context.Context, id string, stepUp bool) (*authz.Principal, store.Command, error) {
 	if _, err := s.D.Store(); err != nil {
 		return nil, store.Command{}, err
 	}
@@ -181,7 +200,11 @@ func (s *HostService) command(ctx context.Context, id string, perm func(*store.C
 	if err != nil {
 		return nil, store.Command{}, connect.NewError(connect.CodeNotFound, errors.New("command not found"))
 	}
-	if _, _, err := s.D.agentFor(ctx, perm(&rec), rec.AgentID); err != nil {
+	access := s.D.agentHeld
+	if stepUp {
+		access = s.D.agentFor
+	}
+	if _, _, err := access(ctx, opPerm(&rec), rec.AgentID); err != nil {
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			return nil, store.Command{}, connect.NewError(connect.CodeNotFound, errors.New("command not found"))
 		}
@@ -190,11 +213,10 @@ func (s *HostService) command(ctx context.Context, id string, perm func(*store.C
 	return p, rec, nil
 }
 
-func viewPerm(*store.Command) string { return authz.FleetView }
-
-// WatchCommand implements HostService.
+// WatchCommand implements HostService. The output can be sensitive, so it needs the
+// permission that authorizes the operation (without a step-up).
 func (s *HostService) WatchCommand(ctx context.Context, req *connect.Request[apiv1.WatchCommandRequest], stream *connect.ServerStream[apiv1.WatchCommandResponse]) error {
-	p, _, err := s.command(ctx, req.Msg.GetCommandId(), viewPerm)
+	p, _, err := s.command(ctx, req.Msg.GetCommandId(), false)
 	if err != nil {
 		return err
 	}
@@ -224,7 +246,7 @@ func (s *HostService) WatchCommand(ctx context.Context, req *connect.Request[api
 			if p = s.D.refreshPrincipal(ctx, p); p == nil {
 				return errStreamAuth
 			}
-			if _, _, err := s.command(authz.WithPrincipal(ctx, p), rec.ID, viewPerm); err != nil {
+			if _, _, err := s.command(authz.WithPrincipal(ctx, p), rec.ID, false); err != nil {
 				return err
 			}
 		case msg, ok := <-sub.C:
@@ -253,12 +275,7 @@ func (s *HostService) WatchCommand(ctx context.Context, req *connect.Request[api
 // CancelCommand implements HostService. Cancelling needs the permission that authorized the
 // operation.
 func (s *HostService) CancelCommand(ctx context.Context, req *connect.Request[apiv1.CancelCommandRequest]) (*connect.Response[apiv1.CancelCommandResponse], error) {
-	p, rec, err := s.command(ctx, req.Msg.GetCommandId(), func(c *store.Command) string {
-		if info, ok := ops.Lookup(c.OperationType); ok {
-			return info.Permission
-		}
-		return authz.AgentsManage
-	})
+	p, rec, err := s.command(ctx, req.Msg.GetCommandId(), true)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +289,8 @@ func (s *HostService) CancelCommand(ctx context.Context, req *connect.Request[ap
 	return connect.NewResponse(&apiv1.CancelCommandResponse{}), nil
 }
 
-// ListCommands implements HostService.
+// ListCommands implements HostService. Commands whose operation the caller may not run are
+// listed without their arguments, result or messages.
 func (s *HostService) ListCommands(ctx context.Context, req *connect.Request[apiv1.ListCommandsRequest]) (*connect.Response[apiv1.ListCommandsResponse], error) {
 	p, v, err := s.D.agentFor(ctx, authz.FleetView, req.Msg.GetAgentId())
 	if err != nil {
@@ -294,7 +312,11 @@ func (s *HostService) ListCommands(ctx context.Context, req *connect.Request[api
 		if live, ok := s.D.Dispatch.Live(p.OrgID, r.ID); ok {
 			r = &live
 		}
-		out.Commands = append(out.Commands, commandProto(r))
+		if p.HasOnAgent(opPerm(r), v.Ref()) {
+			out.Commands = append(out.Commands, commandProto(r))
+		} else {
+			out.Commands = append(out.Commands, commandMetaProto(r))
+		}
 	}
 	return connect.NewResponse(out), nil
 }
