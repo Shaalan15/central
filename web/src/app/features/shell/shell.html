@@ -1,78 +1,148 @@
-<mat-sidenav-container class="container">
-  <mat-sidenav
-    #nav
-    [mode]="narrow() ? 'over' : 'side'"
-    [opened]="!narrow()"
-    class="nav"
-    [fixedInViewport]="narrow()"
+<header class="topbar">
+  <button
+    type="button"
+    class="tb-btn"
+    (click)="toggleNav()"
+    [attr.aria-label]="
+      narrow() ? 'Open navigation' : rail() ? 'Expand sidebar' : 'Collapse sidebar'
+    "
+    [matTooltip]="narrow() ? '' : rail() ? 'Expand sidebar  [' : 'Collapse sidebar  ['"
   >
-    <a class="brand" routerLink="/">
-      <app-icon name="hub" [size]="26" />
-      <span>Central</span>
-    </a>
-    <nav aria-label="Main">
+    <app-icon
+      [name]="narrow() ? 'menu' : rail() ? 'left_panel_open' : 'left_panel_close'"
+      [size]="18"
+    />
+  </button>
+  <a class="brand" routerLink="/"><app-icon name="hub" [size]="18" /><span>Central</span></a>
+  <span class="org">{{ session.org()?.name }}</span>
+  <button type="button" class="search" (click)="openPalette()" aria-label="Go to host or page">
+    <app-icon name="search" [size]="15" />
+    <span class="ph">Go to host or page</span>
+    <span class="keys"
+      ><kbd>{{ isMac ? '⌘' : 'Ctrl' }}</kbd
+      ><kbd>K</kbd></span
+    >
+  </button>
+  <span class="grow"></span>
+  <span
+    class="live"
+    [matTooltip]="fleet.connected() ? 'Receiving live updates' : 'Connection lost; retrying'"
+  >
+    <span class="dot" [class.ok]="fleet.connected()" [class.crit]="!fleet.connected()"></span>
+    {{ fleet.connected() ? 'Live' : 'Reconnecting' }}
+  </span>
+  <button
+    type="button"
+    class="tb-btn"
+    [matTooltip]="themeLabel()"
+    [attr.aria-label]="themeLabel()"
+    (click)="theme.toggle()"
+  >
+    <app-icon [name]="themeIcon()" [size]="17" />
+  </button>
+  <button type="button" class="user" [matMenuTriggerFor]="userMenu" aria-label="Account">
+    <span class="avatar">{{ initials() }}</span>
+    <span class="uname">{{ session.user()?.displayName }}</span>
+    <app-icon name="keyboard_arrow_down" [size]="14" />
+  </button>
+  <mat-menu #userMenu="matMenu" xPosition="before">
+    <div class="who">
+      <strong>{{ session.user()?.displayName }}</strong>
+      <span class="muted">{{ session.user()?.email }}</span>
+    </div>
+    <mat-divider />
+    <a mat-menu-item routerLink="/settings/account"
+      ><app-icon name="person" [size]="16" /> Account and security</a
+    >
+    <button mat-menu-item (click)="logout()">
+      <app-icon name="logout" [size]="16" /> Sign out
+    </button>
+  </mat-menu>
+</header>
+
+<div class="frame">
+  @if (narrow() && layout.drawerOpen()) {
+    <div class="scrim" aria-hidden="true" (pointerdown)="closeDrawer()"></div>
+  }
+  <aside
+    class="sidebar"
+    [class.rail]="rail()"
+    [class.drawer]="narrow()"
+    [class.open]="layout.drawerOpen()"
+    [style.width.px]="sidebarWidth()"
+  >
+    <nav class="nav" aria-label="Main">
       @for (item of visibleNav(); track item.path) {
         <a
           class="nav-item"
           [routerLink]="item.path"
           routerLinkActive="active"
           [routerLinkActiveOptions]="{ exact: item.path === '/' }"
-          (click)="narrow() && nav.close()"
+          [matTooltip]="rail() ? item.label : ''"
+          matTooltipPosition="right"
+          [attr.aria-label]="rail() ? item.label : null"
+          (click)="closeDrawer()"
         >
-          <app-icon [name]="item.icon" />
-          <span class="label">{{ item.label }}</span>
+          <app-icon [name]="item.icon" [size]="16" />
+          @if (!rail()) {
+            <span class="label">{{ item.label }}</span>
+          }
           @if (item.badge && item.badge()) {
-            <span class="count tabular-nums">{{ item.badge() }}</span>
+            <span class="badge tabular-nums">{{ item.badge() }}</span>
           }
         </a>
       }
     </nav>
-    <div class="org">
-      <span class="muted">Organization</span>
-      <strong>{{ session.org()?.name }}</strong>
-    </div>
-  </mat-sidenav>
 
-  <mat-sidenav-content class="content">
-    <header class="topbar">
-      @if (narrow()) {
-        <button mat-icon-button aria-label="Open navigation" (click)="nav.toggle()">
-          <app-icon name="menu" />
-        </button>
-      }
-      <div class="grow"></div>
-      <span
-        class="live"
-        [class.on]="fleet.connected()"
-        [matTooltip]="fleet.connected() ? 'Live updates connected' : 'Reconnecting…'"
-      >
-        <span class="pulse"></span>{{ fleet.connected() ? 'Live' : 'Offline' }}
-      </span>
+    @if (rail()) {
       <button
-        mat-icon-button
-        [matTooltip]="themeLabel()"
-        [attr.aria-label]="themeLabel()"
-        (click)="theme.toggle()"
+        type="button"
+        class="nav-item"
+        matTooltip="Find a host (Ctrl+K)"
+        matTooltipPosition="right"
+        aria-label="Find a host"
+        (click)="openPalette()"
       >
-        <app-icon [name]="themeIcon()" />
+        <app-icon name="dns" [size]="16" />
       </button>
-      <button mat-icon-button class="avatar" [matMenuTriggerFor]="userMenu" aria-label="Account">
-        <span>{{ initials() }}</span>
+      <span class="grow"></span>
+    } @else {
+      <app-host-nav class="hosts" (picked)="closeDrawer()" />
+    }
+
+    @if (!narrow()) {
+      <button
+        type="button"
+        class="collapse"
+        (click)="layout.toggleCollapsed()"
+        [attr.aria-label]="rail() ? 'Expand sidebar' : 'Collapse sidebar'"
+        [matTooltip]="rail() ? 'Expand sidebar  [' : ''"
+        matTooltipPosition="right"
+      >
+        <app-icon [name]="rail() ? 'left_panel_open' : 'left_panel_close'" [size]="16" />
+        @if (!rail()) {
+          <span>Collapse</span><kbd>[</kbd>
+        }
       </button>
-      <mat-menu #userMenu="matMenu" xPosition="before">
-        <div class="who">
-          <strong>{{ session.user()?.displayName }}</strong>
-          <span class="muted">{{ session.user()?.email }}</span>
-        </div>
-        <mat-divider />
-        <a mat-menu-item routerLink="/settings/account"
-          ><app-icon name="person" /> Account and security</a
-        >
-        <button mat-menu-item (click)="logout()"><app-icon name="logout" /> Sign out</button>
-      </mat-menu>
-    </header>
-    <main class="main">
-      <router-outlet />
-    </main>
-  </mat-sidenav-content>
-</mat-sidenav-container>
+      @if (!rail()) {
+        <div
+          class="resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          tabindex="0"
+          (pointerdown)="startResize($event)"
+          (keydown)="resizeKey($event)"
+        ></div>
+      }
+    }
+  </aside>
+
+  <main class="main">
+    <router-outlet />
+  </main>
+</div>
+
+@if (layout.paletteOpen()) {
+  <app-palette [pages]="pages()" (closed)="layout.paletteOpen.set(false)" />
+}

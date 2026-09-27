@@ -34,7 +34,7 @@ import { Qr } from '../../shared/qr';
     <main class="auth-page">
       <section class="auth-card" aria-labelledby="mfa-title">
         <header class="brand">
-          <app-icon name="shield" [size]="28" />
+          <app-icon name="shield" [size]="18" />
           <div>
             <h1 id="mfa-title">Protect your account</h1>
             <p class="muted">Two-factor authentication is required for everyone.</p>

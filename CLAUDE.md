@@ -50,7 +50,7 @@ Toolchains: Go 1.27 (`GOTOOLCHAIN=go1.27.1` is set by the Makefile), Node 24 LTS
 3. **No shell strings.** Anything executed on a managed host is a typed operation with argv —
    never string concatenation.
 4. **Contracts first.** Change `proto/` → `make gen` → implement. `buf breaking` must pass
-   against `main` unless a new API version is introduced.
+   against `master` unless a new API version is introduced.
 5. **Secrets** never go in logs, errors returned to clients, URLs, or the repo. Secrets at rest
    are encrypted with the master key (`server/internal/crypto`).
 6. **Frontend**: standalone components, signals, zoneless, OnPush (v22 default), no inline

@@ -5,7 +5,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -44,7 +44,7 @@ jobs:
         run: make lint-proto
       - name: Generated code is up to date
         run: make gen-check
-      - name: Breaking-change check against main
+      - name: Breaking-change check against the base branch
         if: github.event_name == 'pull_request'
         run: |
           if git ls-tree -d --name-only "origin/${{ github.base_ref }}" proto | grep -q proto; then

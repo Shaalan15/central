@@ -92,11 +92,11 @@ function labelWidth(labels: string[] | null, font: string): number {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 4px 14px;
-      min-height: 20px;
-      margin-bottom: 4px;
-      font: var(--mat-sys-label-medium);
-      color: var(--mat-sys-on-surface-variant);
+      gap: 2px 12px;
+      min-height: 18px;
+      margin-bottom: 2px;
+      font-size: var(--fs-xs);
+      color: var(--text-2);
     }
     .item {
       display: inline-flex;
@@ -104,13 +104,12 @@ function labelWidth(labels: string[] | null, font: string): number {
       gap: 6px;
     }
     .item strong {
-      color: var(--mat-sys-on-surface);
+      color: var(--text);
       font-weight: 500;
     }
     .swatch {
       width: 10px;
-      height: 3px;
-      border-radius: 2px;
+      height: 2px;
     }
     .when {
       margin-left: auto;
@@ -129,7 +128,7 @@ export class Chart {
   readonly times = input<number[]>([]);
   readonly series = input<ChartSeries[]>([]);
   readonly max = input<number | null>(null);
-  readonly height = input(150);
+  readonly height = input(132);
   readonly format = input<(v: number) => string>((v) => v.toFixed(0));
   /** Visible time range [start, end] in Unix ms; defaults to the extent of the data. */
   readonly window = input<readonly [number, number] | null>(null);
@@ -222,11 +221,11 @@ export class Chart {
     this.plot?.destroy();
     this.key = key;
     const probe = this.probe().nativeElement;
-    const grid = rgba(resolveColor(probe, 'var(--mat-sys-outline-variant)'), 0.6);
-    const text = rgba(resolveColor(probe, 'var(--mat-sys-on-surface-variant)'));
+    const grid = rgba(resolveColor(probe, 'var(--border)'), 0.9);
+    const text = rgba(resolveColor(probe, 'var(--text-3)'));
     const fmt = this.format();
     const max = this.max();
-    const font = '11px "Inter Variable", system-ui, sans-serif';
+    const font = '10.5px "Inter Variable", system-ui, sans-serif';
     this.plot = new uPlot(
       {
         width: this.width(),
@@ -276,8 +275,8 @@ export class Chart {
             return {
               label: s.label,
               stroke: rgba(c),
-              width: 1.5,
-              fill: s.fill ? rgba(c, 0.14) : undefined,
+              width: 1.25,
+              fill: s.fill ? rgba(c, 0.1) : undefined,
               points: { show: false },
             };
           }),

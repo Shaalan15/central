@@ -16,6 +16,10 @@ updates:
         patterns: ['@angular/*', '@angular-devkit/*', '@schematics/*', 'angular-eslint']
       npm-minor:
         update-types: [minor, patch]
+    ignore:
+      # Angular pins the TypeScript range it supports; `ng update` moves TypeScript with it.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
   - package-ecosystem: github-actions
     directory: /
     schedule:

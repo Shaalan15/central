@@ -1,73 +1,72 @@
 // Copyright (C) 2026 The Central Authors.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--mat-sys-on-surface-variant);
-  text-decoration: none;
-  font: var(--mat-sys-label-large);
-  margin-bottom: 8px;
-  &:hover {
-    color: var(--mat-sys-primary);
-  }
+:host {
+  display: block;
 }
 .head {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: 'title actions' 'meta actions';
-  gap: 8px 16px;
-  margin-bottom: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 10px 16px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
 }
-.title {
-  grid-area: title;
+.line {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 30px;
   h1 {
-    font: var(--mat-sys-headline-small);
     margin: 0;
+    font-size: 17px;
+    font-weight: 600;
   }
-  p {
-    margin: 2px 0 0;
-    font: var(--mat-sys-body-medium);
-  }
-  .mono {
-    font-family: ui-monospace, monospace;
+  .dot {
+    width: 9px;
+    height: 9px;
   }
 }
-.status {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--mat-sys-outline);
-  &.on {
-    background: var(--app-ok);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-ok) 20%, transparent);
-  }
+.state {
+  color: var(--text-2);
+  margin-right: 4px;
+}
+.spacer {
+  flex: 1;
+}
+.count {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  line-height: 14px;
+  color: var(--text-2);
 }
 .meta {
-  grid-area: meta;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-left: 24px;
-}
-.actions {
-  grid-area: actions;
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
+  margin: 2px 0 4px 17px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
 }
 .tabs {
-  margin: 8px 0 16px;
+  margin: 0 -16px;
+  padding: 0 8px;
+  --mat-tab-divider-height: 0;
 }
-@media (max-width: 800px) {
-  .head {
-    grid-template-columns: 1fr;
-    grid-template-areas: 'title' 'meta' 'actions';
+.tabs a {
+  min-width: 0;
+  padding: 0 12px;
+}
+.content {
+  display: block;
+}
+@media (max-width: 700px) {
+  .meta {
+    margin-left: 0;
+  }
+  .cmdbar {
+    width: 100%;
   }
 }

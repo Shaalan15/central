@@ -23,7 +23,7 @@ import { Icon } from '../../shared/icon';
     <main class="auth-page">
       <section class="auth-card" aria-labelledby="login-title">
         <header class="brand">
-          <app-icon name="hub" [size]="28" />
+          <app-icon name="hub" [size]="18" />
           <div>
             <h1 id="login-title">Central</h1>
             <p class="muted">

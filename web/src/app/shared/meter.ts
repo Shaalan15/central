@@ -3,7 +3,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-/** Compact usage bar with a value label; turns amber at 75% and red at 90%. */
+/** Thin usage bar with a value label; turns amber at 75% and red at 90%. */
 @Component({
   selector: 'app-meter',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -20,35 +20,39 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
     :host {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       width: 100%;
       min-width: 0;
     }
     .track {
       flex: 1;
-      height: 6px;
-      border-radius: 3px;
-      background: var(--mat-sys-surface-container-highest);
+      height: 4px;
+      background: var(--track);
       overflow: hidden;
     }
     .fill {
       display: block;
       height: 100%;
-      border-radius: 3px;
-      background: var(--mat-sys-primary);
-      transition: width 400ms ease;
+      background: color-mix(in srgb, var(--accent) 80%, transparent);
+      transition: width 300ms ease;
     }
     :host(.warn) .fill {
-      background: var(--app-warn, #e3a008);
+      background: var(--warn);
     }
     :host(.crit) .fill {
-      background: var(--mat-sys-error);
+      background: var(--crit);
+    }
+    :host(.warn) .value {
+      color: var(--warn);
+    }
+    :host(.crit) .value {
+      color: var(--crit);
     }
     .value {
-      width: 3.2em;
+      width: 3em;
       text-align: right;
-      font: var(--mat-sys-label-medium);
-      color: var(--mat-sys-on-surface-variant);
+      font-size: var(--fs-sm);
+      color: var(--text-2);
     }
   `,
 })

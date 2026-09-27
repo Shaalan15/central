@@ -3,40 +3,51 @@
 
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { MatButton } from '@angular/material/button';
-import { MatTooltip } from '@angular/material/tooltip';
-import { Router, RouterLink } from '@angular/router';
+import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
+import { RouterLink } from '@angular/router';
 
-import { PolicyProfile } from '../../../gen/central/agent/v1/policy_pb';
-import { ConnectionState, type AgentSummary } from '../../../gen/central/api/v1/fleet_pb';
+import type { AgentSummary } from '../../../gen/central/api/v1/fleet_pb';
 import { ago, duration } from '../../core/format';
 import { Session } from '../../core/session';
 import { Icon } from '../../shared/icon';
 import type { IconName } from '../../shared/icons.generated';
 import { Meter } from '../../shared/meter';
 import { FleetStore } from './fleet-store';
+import {
+  FILTER_LABELS,
+  PROFILE_LABELS,
+  countByFilter,
+  isOnline,
+  selectHosts,
+  type HostFilter,
+  type HostSort,
+} from './fleet-util';
 
-type Quick = 'all' | 'online' | 'offline' | 'updates' | 'security' | 'reboot' | 'pressure';
-type SortKey = 'name' | 'cpu' | 'memory' | 'disk' | 'updates' | 'seen';
+// Re-exported for older imports.
+export { PROFILE_LABELS, underPressure } from './fleet-util';
 
-export const PROFILE_LABELS: Record<number, string> = {
-  [PolicyProfile.OBSERVE]: 'Observe',
-  [PolicyProfile.OPERATE]: 'Operate',
-  [PolicyProfile.ADMINISTER]: 'Administer',
-  [PolicyProfile.FULL]: 'Full',
-};
-
-export function underPressure(a: AgentSummary): boolean {
-  return (
-    a.connection === ConnectionState.ONLINE &&
-    (a.cpuPercent > 90 || a.memoryUsedPercent > 90 || a.diskUsedPercentMax > 90)
-  );
+interface Stat {
+  id: HostFilter;
+  label: string;
+  value: number;
+  sub?: string;
+  tone?: 'ok' | 'warn' | 'crit';
 }
 
+/** Fleet overview: status counters that double as filters, and a dense table of every host. */
 @Component({
   selector: 'app-dashboard',
-  imports: [ScrollingModule, FormsModule, RouterLink, MatButton, MatTooltip, Icon, Meter],
+  imports: [
+    ScrollingModule,
+    RouterLink,
+    MatButton,
+    MatMenu,
+    MatMenuItem,
+    MatMenuTrigger,
+    Icon,
+    Meter,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
@@ -44,141 +55,73 @@ export function underPressure(a: AgentSummary): boolean {
 export class Dashboard {
   readonly store = inject(FleetStore);
   readonly session = inject(Session);
-  private readonly router = inject(Router);
 
   readonly query = signal('');
-  readonly quick = signal<Quick>('all');
-  readonly sort = signal<SortKey>('name');
+  readonly filter = signal<HostFilter>('all');
+  readonly sort = signal<HostSort>('name');
   readonly desc = signal(false);
-  readonly online = ConnectionState.ONLINE;
   readonly profiles = PROFILE_LABELS;
+  readonly filterLabels = FILTER_LABELS;
+  readonly filters = Object.keys(FILTER_LABELS) as HostFilter[];
+  readonly online = isOnline;
 
   readonly summary = this.store.summary;
+  readonly counts = computed(() => countByFilter(this.store.list()));
 
-  readonly tiles = computed(() => {
+  readonly stats = computed<Stat[]>(() => {
     const s = this.summary();
-    const t: {
-      id: Quick;
-      label: string;
-      value: number;
-      icon: IconName;
-      tone?: string;
-      sub?: string;
-    }[] = [
+    const c = this.counts();
+    return [
       {
         id: 'online',
         label: 'Online',
-        value: s?.online ?? 0,
-        icon: 'check_circle',
-        tone: 'ok',
-        sub: `of ${s?.total ?? 0} hosts`,
+        value: c.online,
+        sub: `of ${c.all} hosts`,
       },
-      {
-        id: 'offline',
-        label: 'Offline',
-        value: s?.offline ?? 0,
-        icon: 'cancel',
-        tone: (s?.offline ?? 0) > 0 ? 'muted' : undefined,
-      },
+      { id: 'offline', label: 'Offline', value: c.offline, tone: c.offline ? 'crit' : undefined },
       {
         id: 'updates',
-        label: 'Need updates',
-        value: s?.agentsWithUpdates ?? 0,
-        icon: 'update',
+        label: 'Updates available',
+        value: c.updates,
         sub: `${s?.totalUpdates ?? 0} packages`,
       },
       {
         id: 'security',
         label: 'Security updates',
-        value: s?.agentsWithSecurityUpdates ?? 0,
-        icon: 'security',
-        tone: (s?.agentsWithSecurityUpdates ?? 0) > 0 ? 'danger' : undefined,
+        value: c.security,
         sub: `${s?.totalSecurityUpdates ?? 0} packages`,
+        tone: c.security ? 'crit' : undefined,
       },
       {
         id: 'reboot',
         label: 'Reboot required',
-        value: s?.agentsRebootRequired ?? 0,
-        icon: 'restart_alt',
-        tone: (s?.agentsRebootRequired ?? 0) > 0 ? 'warn' : undefined,
+        value: c.reboot,
+        tone: c.reboot ? 'warn' : undefined,
       },
       {
         id: 'pressure',
         label: 'Under pressure',
-        value: s?.agentsUnderPressure ?? 0,
-        icon: 'speed',
-        tone: (s?.agentsUnderPressure ?? 0) > 0 ? 'warn' : undefined,
-        sub: 'CPU, memory or disk > 90%',
+        value: c.pressure,
+        sub: 'CPU, memory or disk over 90%',
+        tone: c.pressure ? 'warn' : undefined,
       },
     ];
-    return t;
   });
 
-  readonly rows = computed(() => {
-    const q = this.query().trim().toLowerCase();
-    const quick = this.quick();
-    let list = this.store.list().filter((a) => {
-      switch (quick) {
-        case 'online':
-          if (a.connection !== ConnectionState.ONLINE) return false;
-          break;
-        case 'offline':
-          if (a.connection === ConnectionState.ONLINE) return false;
-          break;
-        case 'updates':
-          if (!a.updatesAvailable) return false;
-          break;
-        case 'security':
-          if (!a.securityUpdates) return false;
-          break;
-        case 'reboot':
-          if (!a.rebootRequired) return false;
-          break;
-        case 'pressure':
-          if (!underPressure(a)) return false;
-          break;
-        case 'all':
-      }
-      if (!q) return true;
-      return (
-        a.name.toLowerCase().includes(q) ||
-        a.hostname.toLowerCase().includes(q) ||
-        a.primaryIp.startsWith(q) ||
-        a.osPrettyName.toLowerCase().includes(q) ||
-        a.tags.some((t) => t.includes(q))
-      );
-    });
-    const dir = this.desc() ? -1 : 1;
-    const key = this.sort();
-    const val = (a: AgentSummary): number | string => {
-      switch (key) {
-        case 'cpu':
-          return a.cpuPercent;
-        case 'memory':
-          return a.memoryUsedPercent;
-        case 'disk':
-          return a.diskUsedPercentMax;
-        case 'updates':
-          return a.securityUpdates * 10_000 + a.updatesAvailable;
-        case 'seen':
-          return Number(a.lastSeenAt?.seconds ?? 0);
-        default:
-          return a.name.toLowerCase();
-      }
-    };
-    list = [...list].sort((x, y) => {
-      const a = val(x);
-      const b = val(y);
-      return (a < b ? -1 : a > b ? 1 : x.name.localeCompare(y.name)) * dir;
-    });
-    return list;
-  });
+  readonly rows = computed(() =>
+    selectHosts(this.store.list(), {
+      query: this.query(),
+      filter: this.filter(),
+      sort: this.sort(),
+      desc: this.desc(),
+    }),
+  );
 
-  setQuick(q: Quick): void {
-    this.quick.set(this.quick() === q ? 'all' : q);
+  toggleFilter(f: HostFilter): void {
+    this.filter.set(this.filter() === f ? 'all' : f);
   }
 
-  sortBy(k: SortKey): void {
+  sortBy(k: HostSort): void {
     if (this.sort() === k) this.desc.set(!this.desc());
     else {
       this.sort.set(k);
@@ -186,11 +129,11 @@ export class Dashboard {
     }
   }
 
-  open(a: AgentSummary): void {
-    void this.router.navigate(['/hosts', a.id]);
+  sortIcon(k: HostSort): IconName | null {
+    return this.sort() !== k ? null : this.desc() ? 'south' : 'north';
   }
 
   trackId = (_: number, a: AgentSummary) => a.id;
   uptime = (a: AgentSummary) =>
-    a.connection === ConnectionState.ONLINE ? duration(a.uptimeSeconds) : ago(a.lastSeenAt);
+    isOnline(a) ? duration(a.uptimeSeconds) : `seen ${ago(a.lastSeenAt)}`;
 }

@@ -45,12 +45,24 @@ var errAgentNotFound = connect.NewError(connect.CodeNotFound, errors.New("agent 
 // agentFor loads an agent of the caller's organization and checks perm on it. Agents outside
 // the caller's scope are indistinguishable from missing ones.
 func (d *Deps) agentFor(ctx context.Context, perm, agentID string) (*authz.Principal, fleet.View, error) {
+	return d.agentAccess(ctx, perm, agentID, authz.Require)
+}
+
+// agentHeld is agentFor without the step-up requirement. It is for reading what an operation
+// produced: starting the operation already required the step-up.
+func (d *Deps) agentHeld(ctx context.Context, perm, agentID string) (*authz.Principal, fleet.View, error) {
+	return d.agentAccess(ctx, perm, agentID, authz.RequireHeld)
+}
+
+func (d *Deps) agentAccess(ctx context.Context, perm, agentID string,
+	require func(context.Context, string) (*authz.Principal, error),
+) (*authz.Principal, fleet.View, error) {
 	if _, err := d.Store(); err != nil {
 		return nil, fleet.View{}, err
 	}
 	p := authz.From(ctx)
 	if p == nil || p.OrgID == "" {
-		_, err := authz.Require(ctx, perm)
+		_, err := require(ctx, perm)
 		return nil, fleet.View{}, err
 	}
 	v, ok := d.Fleet.GetInOrg(p.OrgID, agentID)
@@ -61,7 +73,7 @@ func (d *Deps) agentFor(ctx context.Context, perm, agentID string) (*authz.Princ
 		return nil, fleet.View{}, errAgentNotFound
 	}
 	// The agent is visible: missing permissions are reported as such.
-	if _, err := authz.Require(ctx, perm); err != nil {
+	if _, err := require(ctx, perm); err != nil {
 		return nil, fleet.View{}, err
 	}
 	if !p.HasOnAgent(perm, v.Ref()) {

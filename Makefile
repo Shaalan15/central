@@ -49,7 +49,20 @@ tools-gen: ## Install only the pinned Protobuf tools (buf + code generators) int
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
 	go install connectrpc.com/connect/cmd/protoc-gen-connect-go@$(PROTOC_GEN_CONNECT_GO_VERSION)
 
-web/node_modules: web/package-lock.json
+NODE_MAJOR := $(shell cat $(ROOT)/.nvmrc)
+
+.PHONY: check-node
+check-node: # Fail early (and helpfully) when Node.js is missing or too old
+	@command -v node >/dev/null || { \
+		echo "error: 'node' is not on PATH. Central needs Node.js $(NODE_MAJOR) (see .nvmrc)." >&2; \
+		echo "  Install it with nvm from the repo root: nvm install && nvm use" >&2; \
+		echo "  then install the web dependencies:    cd web && npm ci" >&2; \
+		exit 1; }
+	@node -e 'process.exit(+process.versions.node.split(".")[0] >= $(NODE_MAJOR) ? 0 : 1)' || { \
+		echo "error: Node.js $$(node --version) is too old; Central needs $(NODE_MAJOR) (see .nvmrc): nvm install && nvm use" >&2; \
+		exit 1; }
+
+web/node_modules: web/package-lock.json | check-node
 	cd $(WEB) && npm ci --no-audit --no-fund
 	@touch $@
 
@@ -57,10 +70,23 @@ web/node_modules: web/package-lock.json
 # Code generation
 # ---------------------------------------------------------------------------------------------
 
+GEN_TOOLS := $(BIN)/buf $(BIN)/protoc-gen-go $(BIN)/protoc-gen-connect-go
+
+.PHONY: check-gen-tools
+check-gen-tools: check-node web/node_modules
+	@for t in $(GEN_TOOLS) $(WEB)/node_modules/.bin/protoc-gen-es; do \
+		test -x "$$t" || { echo "error: $$t is missing: run 'make tools-gen' and 'cd web && npm ci'" >&2; exit 1; }; \
+	done
+
+# Generation writes into a scratch directory first, so a failed run never leaves the tree
+# without the committed generated code.
 .PHONY: gen
-gen: web/node_modules ## Regenerate Go and TypeScript code from /proto
-	rm -rf gen/go/central web/src/gen
-	buf generate
+gen: check-gen-tools ## Regenerate Go and TypeScript code from /proto
+	@tmp=$$(mktemp -d "$(ROOT)/.gen.XXXXXX"); trap 'rm -rf "$$tmp"' EXIT; \
+	buf generate --output "$$tmp"; \
+	rm -rf gen/go/central web/src/gen; \
+	mv "$$tmp/gen/go/central" gen/go/central; \
+	mv "$$tmp/web/src/gen" web/src/gen
 	cd gen/go && go mod tidy
 
 .PHONY: gen-check
@@ -73,7 +99,7 @@ gen-check: gen ## Fail if generated code is out of date (used in CI)
 # ---------------------------------------------------------------------------------------------
 
 .PHONY: web
-web: web/node_modules ## Build the Angular UI and stage it for embedding into the server binary
+web: check-node web/node_modules ## Build the Angular UI and stage it for embedding into the server binary
 	cd $(WEB) && npm run build
 	find $(WEBUI_DST) -mindepth 1 ! -name .gitkeep -delete
 	cp -R $(WEB)/dist/browser/. $(WEBUI_DST)/
@@ -97,7 +123,7 @@ dev-server: ## Run the server in dev mode (in-memory store, self-signed TLS) on 
 	go run ./server/cmd/central serve --dev
 
 .PHONY: dev-web
-dev-web: web/node_modules ## Run the Angular dev server on :4200 (proxies /api and /ws to :8080)
+dev-web: check-node web/node_modules ## Run the Angular dev server on :4200 (proxies /api and /ws to :8080)
 	cd $(WEB) && npm start
 
 .PHONY: sim
@@ -116,7 +142,7 @@ test-go: ## Go unit tests with the race detector
 	go test -race -shuffle=on -count=1 $(GO_MODULES)
 
 .PHONY: test-web
-test-web: web/node_modules ## Angular unit tests (Vitest)
+test-web: check-node web/node_modules ## Angular unit tests (Vitest)
 	cd $(WEB) && npm run test:ci
 
 .PHONY: lint
@@ -132,7 +158,7 @@ lint-go: ## Lint Go code (golangci-lint, including gosec)
 	golangci-lint run $(GO_MODULES)
 
 .PHONY: lint-web
-lint-web: web/node_modules ## Lint and format-check the Angular code
+lint-web: check-node web/node_modules ## Lint and format-check the Angular code
 	cd $(WEB) && npm run lint && npm run format:check
 
 .PHONY: vuln
@@ -140,8 +166,8 @@ vuln: ## Scan Go dependencies for known vulnerabilities
 	@for m in gen/go server; do (cd $$m && govulncheck ./...) || exit 1; done
 
 .PHONY: breaking
-breaking: ## Check the Protobuf contracts for breaking changes against main
-	buf breaking --against '.git#branch=main'
+breaking: ## Check the Protobuf contracts for breaking changes against master
+	buf breaking --against '.git#branch=origin/master'
 
 .PHONY: check
 check: lint test vuln ## Everything CI runs, locally

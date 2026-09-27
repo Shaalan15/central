@@ -13,16 +13,16 @@ import {
 } from '@angular/core';
 import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle';
 import { RouterLink } from '@angular/router';
+
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 
-import type { MetricsSample } from '../../../gen/central/agent/v1/telemetry_pb';
+import type { DiskIO, MetricsSample, NetIO } from '../../../gen/central/agent/v1/telemetry_pb';
 import { MetricsResolution, MetricsService } from '../../../gen/central/api/v1/metrics_pb';
 import { Api } from '../../core/api';
-import { bytes, dateTime, rate, toDate } from '../../core/format';
+import { bytes, dateTime, duration, rate, toDate } from '../../core/format';
 import { Chart, type ChartSeries } from '../../shared/chart';
-import { Icon } from '../../shared/icon';
 import { Meter } from '../../shared/meter';
-import { PROFILE_LABELS } from '../fleet/dashboard';
+import { PROFILE_LABELS } from '../fleet/fleet-util';
 import { HostContext } from './host-context';
 
 type Range = '1h' | '6h' | '24h' | '7d';
@@ -43,10 +43,23 @@ interface Series {
   tx: number[];
   read: number[];
   write: number[];
+  /** Usage of the fullest filesystem, percent. */
+  disk: number[];
 }
 
 function empty(): Series {
-  return { t: [], cpu: [], mem: [], swap: [], load: [], rx: [], tx: [], read: [], write: [] };
+  return {
+    t: [],
+    cpu: [],
+    mem: [],
+    swap: [],
+    load: [],
+    rx: [],
+    tx: [],
+    read: [],
+    write: [],
+    disk: [],
+  };
 }
 
 function pct(used: bigint, total: bigint): number {
@@ -55,7 +68,7 @@ function pct(used: bigint, total: bigint): number {
 
 @Component({
   selector: 'app-host-overview',
-  imports: [MatButtonToggleGroup, MatButtonToggle, RouterLink, Chart, Icon, Meter],
+  imports: [MatButtonToggleGroup, MatButtonToggle, RouterLink, Chart, Meter],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './overview.html',
   styleUrl: './overview.scss',
@@ -83,27 +96,25 @@ export class Overview {
   };
 
   readonly cpuSeries = computed<ChartSeries[]>(() => [
-    { label: 'CPU', color: 'var(--mat-sys-primary)', values: this.data().cpu, fill: true },
+    { label: 'CPU', color: 'var(--s1)', values: this.data().cpu, fill: true },
   ]);
   readonly memSeries = computed<ChartSeries[]>(() => [
-    { label: 'Memory', color: 'var(--mat-sys-tertiary)', values: this.data().mem, fill: true },
-    { label: 'Swap', color: 'var(--app-warn)', values: this.data().swap },
+    { label: 'Used', color: 'var(--s1)', values: this.data().mem, fill: true },
+    { label: 'Swap', color: 'var(--s3)', values: this.data().swap },
   ]);
   readonly netSeries = computed<ChartSeries[]>(() => [
-    { label: 'Received', color: 'var(--mat-sys-primary)', values: this.data().rx, fill: true },
-    { label: 'Sent', color: 'var(--mat-sys-tertiary)', values: this.data().tx },
+    { label: 'In', color: 'var(--s2)', values: this.data().rx, fill: true },
+    { label: 'Out', color: 'var(--s1)', values: this.data().tx },
   ]);
   readonly diskSeries = computed<ChartSeries[]>(() => [
-    { label: 'Read', color: 'var(--mat-sys-primary)', values: this.data().read, fill: true },
-    { label: 'Write', color: 'var(--mat-sys-tertiary)', values: this.data().write },
+    { label: 'Read', color: 'var(--s2)', values: this.data().read, fill: true },
+    { label: 'Write', color: 'var(--s4)', values: this.data().write },
+  ]);
+  readonly diskUsedSeries = computed<ChartSeries[]>(() => [
+    { label: 'Fullest filesystem', color: 'var(--s3)', values: this.data().disk, fill: true },
   ]);
   readonly loadSeries = computed<ChartSeries[]>(() => [
-    {
-      label: 'Load (1 min)',
-      color: 'var(--mat-sys-secondary)',
-      values: this.data().load,
-      fill: true,
-    },
+    { label: '1 min', color: 'var(--s1)', values: this.data().load, fill: true },
   ]);
 
   readonly sample = computed(() => this.latest() ?? this.ctx.agent()?.latestMetrics ?? null);
@@ -112,6 +123,13 @@ export class Overview {
 
   readonly bytes = bytes;
   readonly dateTime = dateTime;
+  readonly duration = duration;
+  readonly rate = rate;
+  readonly rxRate = (n: NetIO) => n.rxBytesPerSecond;
+  readonly txRate = (n: NetIO) => n.txBytesPerSecond;
+  readonly readRate = (d: DiskIO) => d.readBytesPerSecond;
+  readonly writeRate = (d: DiskIO) => d.writeBytesPerSecond;
+  private shownId = '';
 
   constructor() {
     effect(() => {
@@ -127,6 +145,12 @@ export class Overview {
 
   private async load(id: string, r: Range): Promise<void> {
     const gen = ++this.generation;
+    if (id !== this.shownId) {
+      // Another host: never show the previous host's numbers while loading.
+      this.shownId = id;
+      this.latest.set(null);
+      this.data.set(empty());
+    }
     this.live?.abort();
     this.live = null;
     clearTimeout(this.refresh);
@@ -153,6 +177,7 @@ export class Overview {
           tx: s.netTxBytesPerSecond,
           read: s.diskReadBytesPerSecond,
           write: s.diskWriteBytesPerSecond,
+          disk: s.diskUsedPercentMax,
         };
       }
     } catch {
@@ -207,6 +232,10 @@ export class Overview {
               d.write,
               s.disks.reduce((a, n) => a + n.writeBytesPerSecond, 0),
             ),
+            disk: push(
+              d.disk,
+              s.filesystems.reduce((m, f) => Math.max(m, pct(f.usedBytes, f.totalBytes)), 0),
+            ),
           };
         });
       }
@@ -217,5 +246,10 @@ export class Overview {
 
   fsPercent(used: bigint, total: bigint): number {
     return pct(used, total);
+  }
+
+  /** Sum of a per-device rate over all network interfaces or disks. */
+  total<T>(items: readonly T[], f: (t: T) => number): number {
+    return items.reduce((a, t) => a + f(t), 0);
   }
 }
