@@ -6,7 +6,7 @@ require (
 	connectrpc.com/connect v1.21.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Shaalan15/central/gen/go v0.0.0
-	github.com/appwrite/sdk-for-go/v7 v7.4.0
+	github.com/appwrite/sdk-for-go/v7 v7.5.0
 	github.com/coder/websocket v1.8.15
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/google/uuid v1.6.0
